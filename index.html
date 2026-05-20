@@ -1,0 +1,972 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>靈魂防線 Soul Defender — Prototype W3</title>
+  <style>
+    :root {
+      --legendary: #ffae00;
+      --rare: #66b4ff;
+      --common: #c8c8d8;
+    }
+    html, body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background: #08081a;
+      color: #e0d8ff;
+      font-family: -apple-system, "Segoe UI", "Microsoft JhengHei", "Noto Sans TC", sans-serif;
+    }
+    canvas#game { display: block; }
+
+    /* === 左上 HUD === */
+    #hud {
+      position: fixed;
+      top: 16px;
+      left: 16px;
+      pointer-events: none;
+      user-select: none;
+      text-shadow: 0 2px 6px rgba(0,0,0,0.8);
+    }
+    #crystal-shield-wrap {
+      width: 320px;
+      height: 6px;
+      background: rgba(0,0,0,0.5);
+      border-radius: 2px;
+      overflow: hidden;
+      margin-bottom: 3px;
+      box-shadow: 0 0 6px rgba(102,204,255,0.3);
+    }
+    #crystal-shield {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #66ccff, #aaeeff);
+      transition: width 0.18s;
+    }
+    #crystal-hp-wrap {
+      width: 320px;
+      height: 16px;
+      background: rgba(0,0,0,0.55);
+      border: 1px solid rgba(178,102,255,0.7);
+      border-radius: 3px;
+      overflow: hidden;
+      box-shadow: 0 0 14px rgba(178,102,255,0.45), inset 0 0 6px rgba(0,0,0,0.5);
+    }
+    #crystal-hp {
+      height: 100%;
+      width: 100%;
+      background: linear-gradient(90deg, #b266ff, #e0c0ff);
+      transition: width 0.18s ease-out;
+      box-shadow: inset 0 0 8px rgba(255,255,255,0.4);
+    }
+    #xp-bar-wrap {
+      width: 320px;
+      height: 5px;
+      background: rgba(0,0,0,0.5);
+      border-radius: 2px;
+      overflow: hidden;
+      margin-top: 3px;
+      box-shadow: 0 0 6px rgba(102,255,217,0.3);
+    }
+    #xp-bar {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #66ffd9, #aaffd0);
+      transition: width 0.12s;
+    }
+    #hud-text {
+      margin-top: 8px;
+      font-size: 13px;
+      letter-spacing: 0.5px;
+      opacity: 0.92;
+    }
+    #hud-text span { color: #ffe066; font-weight: 600; margin-right: 2px; }
+    #hud-text #level { color: #66ffd9; }
+    /* W5 Entropy */
+    #entropy-wrap {
+      margin-top: 6px;
+      font-size: 12px;
+      letter-spacing: 2px;
+      opacity: 0.5;
+      transition: all 0.5s;
+    }
+    #entropy-wrap.endless {
+      opacity: 1;
+      color: #ff7733;
+      font-size: 14px;
+      text-shadow: 0 0 12px rgba(255,100,50,0.7), 0 2px 4px #000;
+      letter-spacing: 4px;
+      animation: entropy-pulse 1.4s ease-in-out infinite;
+    }
+    #entropy-wrap.endless::before {
+      content: '☢ ';
+      color: #ffaa44;
+    }
+    #entropy-wrap #entropy {
+      color: inherit;
+      font-weight: 700;
+      font-family: ui-monospace, Consolas, monospace;
+    }
+    @keyframes entropy-pulse {
+      0%, 100% { text-shadow: 0 0 8px rgba(255,100,50,0.5), 0 2px 4px #000; }
+      50% { text-shadow: 0 0 20px rgba(255,140,60,1), 0 2px 4px #000; }
+    }
+
+    /* === Boss HP 條（頂部中央） === */
+    #boss-hp-wrap {
+      position: fixed;
+      top: 16px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 460px;
+      display: none;
+      pointer-events: none;
+      user-select: none;
+      z-index: 5;
+    }
+    #boss-name {
+      text-align: center;
+      font-size: 14px;
+      letter-spacing: 8px;
+      color: #ff5577;
+      text-shadow: 0 0 12px rgba(255,40,80,0.7), 0 2px 4px #000;
+      margin-bottom: 4px;
+      font-weight: 700;
+    }
+    #boss-hp-outer {
+      width: 100%;
+      height: 14px;
+      background: rgba(0,0,0,0.75);
+      border: 1px solid rgba(255,80,100,0.8);
+      border-radius: 2px;
+      box-shadow: 0 0 18px rgba(255,40,80,0.4), inset 0 0 4px rgba(0,0,0,0.6);
+      overflow: hidden;
+    }
+    #boss-hp {
+      height: 100%;
+      width: 100%;
+      background: linear-gradient(90deg, #ff1133, #ff6677);
+      transition: width 0.18s ease-out;
+      box-shadow: inset 0 0 6px rgba(255,255,255,0.3);
+    }
+
+    /* === 右上統計 === */
+    #stats {
+      position: fixed;
+      top: 16px;
+      right: 16px;
+      font-size: 12px;
+      opacity: 0.78;
+      text-align: right;
+      pointer-events: none;
+      line-height: 1.55;
+    }
+    #stats b { color: #66ffd9; }
+
+    /* === 已獲得天賦（W8 修：改放右上 stats 下方，不再擋 help 按鍵提示） === */
+    #active-perks {
+      position: fixed;
+      right: 16px;
+      top: 96px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      max-width: 240px;
+      justify-content: flex-end;
+      pointer-events: auto;
+    }
+    .active-perk {
+      width: 36px; height: 36px;
+      border-radius: 6px;
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.2);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 20px;
+      position: relative; cursor: help;
+      backdrop-filter: blur(6px);
+      box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+    }
+    .active-perk.rarity-legendary { border-color: var(--legendary); box-shadow: 0 0 12px rgba(255,170,0,0.4); }
+    .active-perk.rarity-rare { border-color: var(--rare); box-shadow: 0 0 10px rgba(102,180,255,0.3); }
+    .active-perk.rarity-common { border-color: rgba(200,200,216,0.5); }
+    .active-perk .stack {
+      position: absolute; bottom: -3px; right: -3px;
+      background: #b266ff; color: #fff;
+      font-size: 10px; font-weight: 700;
+      padding: 1px 5px; border-radius: 8px;
+      box-shadow: 0 0 4px rgba(0,0,0,0.6);
+    }
+
+    #help {
+      position: fixed; bottom: 16px; right: 16px;
+      font-size: 11px; opacity: 0.55; text-align: right;
+      pointer-events: none; line-height: 1.6;
+    }
+    #help kbd {
+      display: inline-block; padding: 1px 6px;
+      border: 1px solid rgba(255,255,255,0.35);
+      border-radius: 3px; background: rgba(255,255,255,0.05);
+      font-family: ui-monospace, Consolas, monospace; font-size: 10px;
+    }
+
+    #title {
+      position: fixed; bottom: 16px; left: 16px;
+      font-size: 11px; opacity: 0.45; letter-spacing: 1px;
+      pointer-events: none;
+    }
+
+    #damage-layer {
+      position: fixed; inset: 0;
+      pointer-events: none; overflow: hidden;
+    }
+    .dmg-num {
+      position: absolute; color: #ffe066;
+      font-weight: 700; font-size: 16px;
+      text-shadow: 0 0 6px rgba(0,0,0,0.95), 0 1px 2px #000;
+      transform: translate(-50%, -50%);
+      will-change: transform, opacity;
+      animation: dmg-pop 0.7s cubic-bezier(.2,.7,.3,1) forwards;
+      pointer-events: none;
+    }
+    .dmg-num.crit {
+      color: #ffae00; font-size: 26px;
+      text-shadow: 0 0 10px rgba(255,140,0,0.9), 0 0 4px #000;
+    }
+    @keyframes dmg-pop {
+      0% { transform: translate(-50%, -40%) scale(0.5); opacity: 0; }
+      18% { transform: translate(-50%, -70%) scale(1.25); opacity: 1; }
+      100% { transform: translate(-50%, -180%) scale(0.95); opacity: 0; }
+    }
+
+    /* === 教學 toast === */
+    #tutorial-toast {
+      position: fixed;
+      bottom: 90px;
+      left: 50%;
+      transform: translateX(-50%) translateY(20px);
+      padding: 14px 28px;
+      background: rgba(8,8,26,0.82);
+      backdrop-filter: blur(10px) saturate(140%);
+      -webkit-backdrop-filter: blur(10px) saturate(140%);
+      border: 1px solid rgba(102,255,217,0.55);
+      border-radius: 8px;
+      color: #fff;
+      font-size: 14px;
+      letter-spacing: 1px;
+      line-height: 1.5;
+      opacity: 0;
+      transition: opacity 0.35s, transform 0.35s;
+      pointer-events: none;
+      max-width: 640px;
+      text-align: center;
+      z-index: 15;
+      box-shadow: 0 0 26px rgba(102,255,217,0.22), 0 8px 24px rgba(0,0,0,0.5);
+    }
+    #tutorial-toast.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+    #tutorial-toast::before {
+      content: '◆';
+      color: #66ffd9;
+      margin-right: 10px;
+      filter: drop-shadow(0 0 4px #66ffd9);
+    }
+
+    /* === Game Over + Tech Tree === */
+    #gameover {
+      position: fixed; inset: 0;
+      display: none;
+      align-items: center; justify-content: center;
+      flex-direction: column;
+      background: radial-gradient(ellipse at center, rgba(80,10,30,0.55), rgba(0,0,0,0.95));
+      z-index: 10;
+      animation: fade-in 0.6s ease-out;
+      overflow-y: auto;
+      padding: 40px 20px;
+      box-sizing: border-box;
+    }
+    #gameover.show { display: flex; }
+    #gameover h1 {
+      font-size: 56px; margin: 0;
+      letter-spacing: 8px;
+      color: #ff5577;
+      text-shadow: 0 0 32px rgba(255,40,80,0.8);
+    }
+    .stats-row {
+      margin-top: 20px;
+      display: flex;
+      gap: 28px;
+      font-size: 14px;
+      opacity: 0.85;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+    .stats-row b { color: #ffe066; font-weight: 700; font-size: 18px; }
+    .tech-section {
+      margin-top: 36px;
+      width: 100%;
+      max-width: 900px;
+    }
+    .tech-section-header {
+      display: flex; justify-content: space-between;
+      align-items: baseline;
+      margin-bottom: 16px;
+      padding: 0 8px;
+    }
+    .tech-tree-title {
+      font-size: 18px;
+      letter-spacing: 6px;
+      color: #c0a8ff;
+    }
+    .tech-currency {
+      font-size: 14px;
+      color: #aaeeff;
+    }
+    .tech-currency b {
+      color: #fff;
+      font-size: 20px;
+      font-weight: 700;
+      margin: 0 4px;
+    }
+    #tech-tree-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+      margin-bottom: 28px;
+    }
+    .tech-card {
+      background: linear-gradient(135deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02));
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 10px;
+      padding: 20px 16px;
+      display: flex; flex-direction: column;
+      align-items: center;
+      cursor: not-allowed;
+      transition: all 0.2s;
+      opacity: 0.55;
+      position: relative;
+    }
+    .tech-card.can-buy {
+      cursor: pointer;
+      opacity: 1;
+      border-color: rgba(102,255,217,0.55);
+      box-shadow: 0 0 18px rgba(102,255,217,0.25);
+    }
+    .tech-card.can-buy:hover {
+      transform: translateY(-4px);
+      border-color: rgba(102,255,217,0.95);
+      box-shadow: 0 0 28px rgba(102,255,217,0.5);
+    }
+    .tech-card.owned {
+      opacity: 1;
+      border-color: rgba(255,170,0,0.65);
+      box-shadow: 0 0 18px rgba(255,170,0,0.25);
+      cursor: default;
+    }
+    .tech-card.owned::after {
+      content: '✓';
+      position: absolute;
+      top: 8px; right: 12px;
+      color: #ffae00;
+      font-size: 18px;
+      font-weight: 700;
+    }
+    .tech-icon { font-size: 36px; margin-bottom: 8px; }
+    .tech-name { font-size: 15px; font-weight: 700; letter-spacing: 2px; margin-bottom: 6px; }
+    .tech-desc { font-size: 11px; opacity: 0.7; text-align: center; line-height: 1.4; flex: 1; margin-bottom: 10px; }
+    .tech-cost {
+      font-size: 13px;
+      font-weight: 700;
+      color: #aaeeff;
+    }
+    .tech-card.owned .tech-cost { color: #ffae00; }
+
+    /* W6 Meta UI 擴充 */
+    .meta-extra {
+      width: 100%;
+      max-width: 900px;
+      margin-top: 24px;
+      padding: 18px;
+      background: linear-gradient(135deg, rgba(255,255,255,0.04), rgba(255,255,255,0.01));
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 10px;
+    }
+    .meta-section-title {
+      font-size: 16px;
+      letter-spacing: 4px;
+      color: #ffc066;
+      margin-bottom: 4px;
+    }
+    .meta-section-title .unlocked-mark {
+      color: #66ffd9;
+      font-size: 11px;
+      letter-spacing: 2px;
+      margin-left: 8px;
+    }
+    .meta-section-desc {
+      font-size: 12px;
+      opacity: 0.7;
+      margin-bottom: 12px;
+    }
+    .meta-section-desc b { color: #ffe066; }
+    .meta-action {
+      padding: 8px 18px;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.2);
+      color: #ccc;
+      cursor: not-allowed;
+      border-radius: 4px;
+      font-size: 13px;
+      letter-spacing: 2px;
+      opacity: 0.55;
+      transition: all 0.15s;
+    }
+    .meta-action.can-buy {
+      cursor: pointer; opacity: 1;
+      border-color: rgba(102,255,217,0.65);
+      color: #aaeeff;
+    }
+    .meta-action.can-buy:hover {
+      background: rgba(102,255,217,0.12);
+      box-shadow: 0 0 14px rgba(102,255,217,0.4);
+    }
+    .imprint-options {
+      display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px;
+    }
+    .imprint-pick {
+      padding: 8px 14px;
+      background: rgba(0,0,0,0.4);
+      border: 1px solid rgba(255,255,255,0.2);
+      color: #ddd;
+      cursor: pointer;
+      border-radius: 4px;
+      font-size: 12px;
+      letter-spacing: 1px;
+      transition: all 0.12s;
+    }
+    .imprint-pick.rarity-rare { border-color: rgba(102,180,255,0.5); }
+    .imprint-pick.rarity-legendary { border-color: rgba(255,170,0,0.5); }
+    .imprint-pick:hover { background: rgba(255,255,255,0.08); transform: translateY(-2px); }
+    .imprint-pick.active {
+      background: rgba(255,170,0,0.18);
+      border-color: rgba(255,170,0,0.95);
+      box-shadow: 0 0 12px rgba(255,170,0,0.4);
+    }
+    .forbidden-list { display: flex; flex-direction: column; gap: 8px; }
+    .forbidden-card {
+      display: flex; gap: 14px; align-items: center;
+      padding: 10px 14px;
+      background: rgba(0,0,0,0.3);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 6px;
+      transition: all 0.15s;
+    }
+    .forbidden-card.locked { opacity: 0.65; }
+    .forbidden-card.active {
+      background: rgba(255,77,77,0.1);
+      border-color: rgba(255,77,77,0.6);
+      box-shadow: 0 0 16px rgba(255,77,77,0.25);
+    }
+    .fb-icon { font-size: 26px; }
+    .fb-info { flex: 1; }
+    .fb-name { font-size: 14px; font-weight: 700; color: #ffaa66; }
+    .fb-desc { font-size: 11px; opacity: 0.7; margin-top: 2px; }
+    .forbidden-toggle {
+      padding: 6px 14px;
+      background: transparent;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+      letter-spacing: 2px;
+      transition: all 0.15s;
+    }
+    .forbidden-toggle.off {
+      border: 1px solid rgba(255,255,255,0.3);
+      color: #aaa;
+    }
+    .forbidden-toggle.on {
+      border: 1px solid #ff5566;
+      color: #ff8899;
+      background: rgba(255,80,100,0.15);
+      box-shadow: 0 0 10px rgba(255,80,100,0.4);
+    }
+
+    /* === 存檔系統：Boot Menu + Save Slots === */
+    #boot-menu {
+      position: fixed; inset: 0;
+      display: none;
+      align-items: center; justify-content: center;
+      background: radial-gradient(ellipse at center, rgba(40,20,80,0.6), rgba(0,0,0,0.96));
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      z-index: 50;
+    }
+    #boot-menu.show { display: flex; }
+    .boot-panel {
+      width: 520px;
+      padding: 36px 32px;
+      background: linear-gradient(135deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02));
+      border: 1px solid rgba(178,102,255,0.5);
+      border-radius: 12px;
+      box-shadow: 0 0 48px rgba(178,102,255,0.3);
+      text-align: center;
+    }
+    .boot-title {
+      font-size: 32px; letter-spacing: 12px; font-weight: 700;
+      color: #e0c0ff;
+      text-shadow: 0 0 16px rgba(178,102,255,0.6);
+    }
+    .boot-subtitle {
+      font-size: 12px; letter-spacing: 8px;
+      color: #66ffd9;
+      margin-top: 4px;
+      opacity: 0.7;
+      margin-bottom: 28px;
+    }
+    .boot-options {
+      display: flex; flex-direction: column; gap: 10px;
+    }
+    .boot-options button {
+      width: 100%;
+      padding: 12px 18px;
+      background: rgba(0,0,0,0.4);
+      border: 1px solid rgba(255,255,255,0.18);
+      color: #ccc;
+      font-size: 14px; letter-spacing: 2px;
+      cursor: pointer;
+      border-radius: 6px;
+      transition: all 0.15s;
+      display: flex; flex-direction: column; align-items: flex-start; gap: 3px;
+    }
+    .boot-options button:hover:not([disabled]) {
+      background: rgba(178,102,255,0.12);
+      border-color: rgba(178,102,255,0.6);
+      transform: translateY(-2px);
+    }
+    .boot-options button[disabled] {
+      opacity: 0.4; cursor: not-allowed;
+    }
+    .boot-new {
+      background: rgba(102,255,217,0.08) !important;
+      border-color: rgba(102,255,217,0.5) !important;
+      color: #aaffd0 !important;
+    }
+    .boot-new:hover { box-shadow: 0 0 16px rgba(102,255,217,0.3); }
+    .boot-slot.has-data {
+      border-color: rgba(255,170,0,0.4);
+    }
+    .boot-slot .slot-num {
+      font-weight: 700;
+      color: #fff;
+      letter-spacing: 3px;
+    }
+    .boot-slot .slot-meta {
+      font-size: 11px;
+      color: rgba(255,255,255,0.6);
+      letter-spacing: 1px;
+    }
+    .boot-slot .slot-date {
+      font-size: 10px;
+      color: rgba(102,255,217,0.55);
+      font-family: ui-monospace, Consolas, monospace;
+    }
+    .boot-hint {
+      margin-top: 24px;
+      font-size: 10px;
+      opacity: 0.4;
+      letter-spacing: 1px;
+    }
+
+    /* Game Over 的存檔 slot 區 */
+    .save-slot-list {
+      display: flex; flex-direction: column; gap: 6px;
+      margin-top: 8px;
+    }
+    .save-slot-btn {
+      width: 100%;
+      padding: 10px 14px;
+      background: rgba(0,0,0,0.3);
+      border: 1px solid rgba(255,170,0,0.3);
+      color: #ffe0b8;
+      font-size: 12px; letter-spacing: 1px;
+      text-align: left;
+      cursor: pointer;
+      border-radius: 5px;
+      transition: all 0.12s;
+    }
+    .save-slot-btn:hover {
+      background: rgba(255,170,0,0.12);
+      border-color: rgba(255,170,0,0.7);
+      transform: translateX(4px);
+    }
+    .save-slot-btn .save-action {
+      float: right;
+      color: #66ffd9;
+      font-size: 11px;
+      opacity: 0.85;
+    }
+
+    /* Export / Import Base64 區 */
+    .save-io-section {
+      margin-top: 16px;
+      padding-top: 12px;
+      border-top: 1px dashed rgba(102,255,217,0.2);
+    }
+    .save-io-title {
+      font-size: 12px;
+      letter-spacing: 3px;
+      color: #66ffd9;
+      margin-bottom: 8px;
+    }
+    .save-io-actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 8px;
+    }
+    .save-io-btn {
+      padding: 6px 12px;
+      background: rgba(0,0,0,0.3);
+      border: 1px solid rgba(102,255,217,0.35);
+      color: #aaeeff;
+      font-size: 11px;
+      letter-spacing: 1px;
+      cursor: pointer;
+      border-radius: 4px;
+      transition: all 0.12s;
+    }
+    .save-io-btn:hover {
+      background: rgba(102,255,217,0.12);
+      border-color: rgba(102,255,217,0.7);
+    }
+    .save-io-confirm {
+      border-color: rgba(255,170,0,0.6) !important;
+      color: #ffe066 !important;
+    }
+    .save-io-confirm:hover { background: rgba(255,170,0,0.12) !important; }
+    #save-io-text, #boot-import-text {
+      width: 100%; box-sizing: border-box;
+      padding: 8px;
+      background: rgba(0,0,0,0.5);
+      border: 1px solid rgba(255,255,255,0.18);
+      color: #ddd;
+      font-family: ui-monospace, Consolas, monospace;
+      font-size: 11px;
+      border-radius: 4px;
+      resize: vertical;
+      margin-bottom: 6px;
+    }
+    .save-io-status, .boot-io-status {
+      font-size: 11px;
+      min-height: 14px;
+      margin-top: 4px;
+      letter-spacing: 1px;
+    }
+    .save-io-status.ok, .boot-io-status.ok { color: #66ffd9; }
+    .save-io-status.err, .boot-io-status.err { color: #ff8899; }
+
+    /* Boot Menu 內的 import 區 */
+    .boot-io {
+      margin-top: 16px;
+      padding-top: 14px;
+      border-top: 1px dashed rgba(255,255,255,0.12);
+    }
+    .boot-io-btn {
+      padding: 8px 14px;
+      background: rgba(0,0,0,0.4);
+      border: 1px solid rgba(102,255,217,0.4);
+      color: #aaeeff;
+      font-size: 11px;
+      letter-spacing: 1px;
+      cursor: pointer;
+      border-radius: 4px;
+      transition: all 0.12s;
+      width: 100%;
+    }
+    .boot-io-btn:hover {
+      background: rgba(102,255,217,0.1);
+      border-color: rgba(102,255,217,0.8);
+    }
+    #boot-import-panel { margin-top: 8px; }
+    .boot-io-confirm {
+      margin-top: 6px;
+      border-color: rgba(255,170,0,0.6) !important;
+      color: #ffe066 !important;
+    }
+
+    /* W7 Terminal Leaderboard */
+    .leaderboard-section {
+      width: 100%;
+      max-width: 900px;
+      margin-top: 24px;
+    }
+    .terminal-board {
+      background: #000814;
+      border: 1px solid #1aff66;
+      padding: 14px 18px;
+      color: #66ff99;
+      font-family: ui-monospace, "Cascadia Code", Consolas, "Courier New", monospace;
+      font-size: 11.5px;
+      line-height: 1.45;
+      letter-spacing: 0;
+      box-shadow: 0 0 28px rgba(26,255,102,0.18), inset 0 0 18px rgba(26,255,102,0.06);
+      border-radius: 4px;
+      overflow-x: auto;
+      white-space: pre;
+      margin: 0;
+      text-shadow: 0 0 4px rgba(102,255,153,0.5);
+      position: relative;
+    }
+    .terminal-board::before {
+      content: '● ● ●';
+      position: absolute;
+      top: 6px;
+      right: 14px;
+      color: rgba(102,255,153,0.45);
+      font-size: 10px;
+      letter-spacing: 2px;
+    }
+
+    #gameover button {
+      margin-top: 12px;
+      padding: 12px 40px;
+      background: transparent;
+      border: 1px solid #b266ff;
+      color: #e0c0ff;
+      font-size: 14px;
+      letter-spacing: 4px;
+      cursor: pointer;
+      border-radius: 3px;
+      transition: all 0.15s;
+    }
+    #gameover button:hover {
+      background: rgba(178,102,255,0.15);
+      box-shadow: 0 0 16px rgba(178,102,255,0.4);
+    }
+    @keyframes fade-in {
+      from { opacity: 0; } to { opacity: 1; }
+    }
+
+    /* === Perk Overlay === */
+    #perk-overlay {
+      position: fixed; inset: 0;
+      display: none;
+      align-items: center; justify-content: center;
+      flex-direction: column;
+      background: radial-gradient(ellipse at center, rgba(60,30,120,0.5), rgba(0,0,0,0.85));
+      backdrop-filter: blur(8px) saturate(120%);
+      -webkit-backdrop-filter: blur(8px) saturate(120%);
+      z-index: 20;
+    }
+    #perk-overlay.show {
+      display: flex;
+      animation: perk-fade-in 0.32s cubic-bezier(.2,.8,.2,1) both;
+    }
+    @keyframes perk-fade-in {
+      from { opacity: 0; backdrop-filter: blur(0); }
+      to { opacity: 1; }
+    }
+    .perk-title {
+      font-size: 32px; font-weight: 600;
+      letter-spacing: 6px; color: #f0e8ff;
+      text-shadow: 0 0 24px rgba(178,102,255,0.5);
+      margin-bottom: 6px;
+    }
+    .perk-subtitle {
+      font-size: 14px; letter-spacing: 4px;
+      color: #66ffd9; opacity: 0.85;
+      margin-bottom: 36px;
+    }
+    .perk-subtitle b { color: #ffe066; font-weight: 700; }
+    .perk-cards { display: flex; gap: 28px; }
+    .perk-card {
+      width: 240px; height: 340px;
+      background: linear-gradient(135deg, rgba(255,255,255,0.07), rgba(255,255,255,0.02));
+      backdrop-filter: blur(14px) saturate(140%);
+      -webkit-backdrop-filter: blur(14px) saturate(140%);
+      border: 1px solid rgba(255,255,255,0.18);
+      border-radius: 14px;
+      padding: 28px 22px;
+      cursor: pointer;
+      transition: transform 0.22s cubic-bezier(.2,.8,.2,1), box-shadow 0.22s, background 0.22s, border-color 0.22s;
+      position: relative; overflow: hidden;
+      display: flex; flex-direction: column; align-items: center;
+      animation: card-in 0.4s cubic-bezier(.2,.8,.2,1) both;
+    }
+    .perk-card::before {
+      content: ''; position: absolute;
+      top: 0; left: 0; right: 0; height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
+    }
+    .perk-card::after {
+      content: ''; position: absolute; inset: 0;
+      background: radial-gradient(circle at 50% 0%, rgba(255,255,255,0.15), transparent 60%);
+      pointer-events: none;
+    }
+    .perk-card:nth-child(1) { animation-delay: 0.05s; }
+    .perk-card:nth-child(2) { animation-delay: 0.13s; }
+    .perk-card:nth-child(3) { animation-delay: 0.21s; }
+    @keyframes card-in {
+      from { opacity: 0; transform: translateY(28px) scale(0.95); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+    .perk-card:hover {
+      transform: translateY(-10px) scale(1.04);
+      background: linear-gradient(135deg, rgba(255,255,255,0.12), rgba(255,255,255,0.04));
+    }
+    .perk-card.rarity-legendary {
+      border-color: rgba(255,170,0,0.65);
+      box-shadow: 0 0 32px rgba(255,170,0,0.32), inset 0 0 24px rgba(255,170,0,0.08);
+    }
+    .perk-card.rarity-legendary:hover {
+      border-color: rgba(255,170,0,0.95);
+      box-shadow: 0 0 48px rgba(255,170,0,0.55), inset 0 0 30px rgba(255,170,0,0.15);
+    }
+    .perk-card.rarity-rare {
+      border-color: rgba(102,180,255,0.6);
+      box-shadow: 0 0 24px rgba(102,180,255,0.3), inset 0 0 20px rgba(102,180,255,0.06);
+    }
+    .perk-card.rarity-rare:hover {
+      border-color: rgba(102,180,255,0.95);
+      box-shadow: 0 0 36px rgba(102,180,255,0.5), inset 0 0 24px rgba(102,180,255,0.12);
+    }
+    .perk-card.rarity-common { border-color: rgba(200,200,216,0.4); }
+    .perk-card.rarity-common:hover {
+      border-color: rgba(200,200,216,0.85);
+      box-shadow: 0 0 24px rgba(200,200,216,0.25);
+    }
+    .perk-rarity-tag {
+      font-size: 10px; letter-spacing: 3px;
+      font-weight: 700; opacity: 0.85;
+      margin-bottom: 14px;
+    }
+    .rarity-legendary .perk-rarity-tag { color: var(--legendary); }
+    .rarity-rare .perk-rarity-tag { color: var(--rare); }
+    .rarity-common .perk-rarity-tag { color: var(--common); }
+    .perk-icon { font-size: 56px; margin-bottom: 16px; filter: drop-shadow(0 4px 8px rgba(0,0,0,0.4)); }
+    .perk-name { font-size: 22px; font-weight: 700; letter-spacing: 2px; color: #fff; margin-bottom: 4px; }
+    .perk-name-en { font-size: 11px; letter-spacing: 2px; color: rgba(255,255,255,0.45); margin-bottom: 18px; text-transform: uppercase; }
+    .perk-desc { font-size: 13px; line-height: 1.6; text-align: center; color: rgba(255,255,255,0.78); flex: 1; }
+    .perk-hotkey {
+      position: absolute; top: 12px; right: 14px;
+      width: 22px; height: 22px;
+      border: 1px solid rgba(255,255,255,0.35);
+      border-radius: 4px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 12px; font-weight: 600; opacity: 0.7;
+    }
+    .perk-hint { margin-top: 32px; font-size: 11px; letter-spacing: 4px; opacity: 0.45; }
+  </style>
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+    }
+  }
+  </script>
+</head>
+<body>
+  <canvas id="game"></canvas>
+
+  <div id="hud">
+    <div id="crystal-shield-wrap"><div id="crystal-shield"></div></div>
+    <div id="crystal-hp-wrap"><div id="crystal-hp"></div></div>
+    <div id="xp-bar-wrap"><div id="xp-bar"></div></div>
+    <div id="hud-text">
+      LV <span id="level">1</span>
+      水晶 <span id="hp-text">1000 / 1000</span>
+      繫帶 <span id="tether-mult">×1.00</span>
+      擊殺 <span id="kills">0</span>
+      時間 <span id="time">0s</span>
+    </div>
+    <div id="entropy-wrap">ENTROPY <span id="entropy">0.00</span></div>
+  </div>
+
+  <div id="boss-hp-wrap">
+    <div id="boss-name">OHM ── 繫帶終結者</div>
+    <div id="boss-hp-outer"><div id="boss-hp"></div></div>
+  </div>
+
+  <div id="stats">
+    FPS <b id="fps">--</b><br>
+    怪物 <b id="enemy-count">0</b><br>
+    靈魂 <b id="soul-count">0</b><br>
+    子彈 <b id="bullet-count">0</b>
+  </div>
+
+  <div id="active-perks"></div>
+
+  <div id="help">
+    <kbd>WASD</kbd> 移動　<kbd>Space</kbd> Dash<br>
+    <kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> 選擇升級天賦<br>
+    <kbd>B</kbd> Leech 100　<kbd>V</kbd> Slinger　<kbd>C</kbd> Splitter　<kbd>J</kbd> Boss<br>
+    <kbd>N</kbd> 強升　<kbd>M</kbd> 靜音　<kbd>R</kbd> 重開
+  </div>
+
+  <div id="title">靈魂防線 · SOUL DEFENDER · PROTOTYPE W3</div>
+
+  <div id="damage-layer"></div>
+
+  <div id="tutorial-toast"><span id="tutorial-text"></span></div>
+
+  <div id="perk-overlay">
+    <div class="perk-title">水晶共鳴</div>
+    <div class="perk-subtitle">LV <b id="perk-level">2</b> ── 選擇一個天賦</div>
+    <div class="perk-cards" id="perk-cards"></div>
+    <div class="perk-hint">點擊卡片 或 按 1 / 2 / 3</div>
+  </div>
+
+  <div id="gameover">
+    <h1>水晶崩落</h1>
+    <div class="stats-row">
+      <div>等級 <b id="final-level">1</b></div>
+      <div>擊殺 <b id="final-kills">0</b></div>
+      <div>時間 <b id="final-time">0</b>s</div>
+      <div>本局收穫 <b id="run-souls">0</b> 💠</div>
+      <div>累計局數 <b id="run-count">0</b></div>
+    </div>
+    <div class="tech-section">
+      <div class="tech-section-header">
+        <div class="tech-tree-title">永久升級 — TECH TREE</div>
+        <div class="tech-currency">擁有 <b id="total-souls">0</b> 💠</div>
+      </div>
+      <div id="tech-tree-grid"></div>
+      <div id="imprint-wrap" class="meta-extra"></div>
+      <div id="forbidden-wrap" class="meta-extra"></div>
+      <div id="save-slots-wrap" class="meta-extra"></div>
+      <div id="leaderboard-wrap" class="leaderboard-section"></div>
+    </div>
+    <button onclick="location.reload()">再戰一次</button>
+  </div>
+
+  <!-- Boot Menu：偵測到任一 slot 有存檔時自動顯示 -->
+  <div id="boot-menu">
+    <div class="boot-panel">
+      <div class="boot-title">靈魂防線</div>
+      <div class="boot-subtitle">SOUL DEFENDER</div>
+      <div class="boot-options">
+        <button class="boot-new" data-action="new">▶ 新遊戲（重置進度）</button>
+        <button class="boot-slot" data-slot="1"></button>
+        <button class="boot-slot" data-slot="2"></button>
+        <button class="boot-slot" data-slot="3"></button>
+      </div>
+      <div class="boot-io">
+        <button class="boot-io-btn" id="boot-import-btn">📥 匯入 Base64 存檔（跨裝置）</button>
+        <div id="boot-import-panel" style="display:none">
+          <textarea id="boot-import-text" placeholder="貼上 Base64 字串..." rows="3"></textarea>
+          <button class="boot-io-btn boot-io-confirm" id="boot-import-confirm">✅ 確認匯入並重啟</button>
+          <div id="boot-import-status" class="boot-io-status"></div>
+        </div>
+      </div>
+      <div class="boot-hint">每次開遊戲都會顯示此選單。要關掉自動 reset 請修改 src/main.js 的 RESET_ON_LOAD 為 false</div>
+    </div>
+  </div>
+
+  <!-- ?v=YYYYMMDD-x 是 cache busting；改任何 src/*.js 後把這個版本號 +1 就會強制瀏覽器重新抓 -->
+  <script type="module" src="./src/main.js?v=20260520o"></script>
+</body>
+</html>
