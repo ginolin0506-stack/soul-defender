@@ -102,10 +102,11 @@ export const CONFIG = {
   bossSpawnTime: 180,                  // fallback
   bossHp: 2800,
   bossRadius: 1.9,
-  bossOrbitRadius: 13,
+  bossSpawnDistance: 13,               // 出生時離水晶的距離（隨機角度）— 原 bossOrbitRadius
   bossSeverRadius: 2.0,                // boss 到「hero-crystal 線段」垂直距離 < 此值 = 壓繫帶
-  bossOrbitSpeedP0: 0.18,              // 三階段都繞圈（P2 改為衝刺），保留 P0/P1 軌道速度
-  bossOrbitSpeedP1: 0.30,
+  // P0/P1 行為：追擊「繫帶中點」(hero/crystal 連線中央)；P2 衝向水晶自爆
+  bossChaseSpeedP0: 2.0,               // 慢追擊（出場期玩家有時間反應）
+  bossChaseSpeedP1: 3.5,               // 加速追擊（< 50% HP 加壓）
   bossXp: 80,
   bossKillSouls: 25,
 
