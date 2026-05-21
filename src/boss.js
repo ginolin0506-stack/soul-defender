@@ -32,6 +32,9 @@ export class Boss {
 
     this.phase = 0;
     this.orbitAngle = 0;
+    // 軌道半徑「平滑復原」用：順移後 boss 落在 target（通常 ~3.5u），
+    // 之後軌道數學每幀 lerp 把 _currentRadius 拉回 bossOrbitRadius，避免下一幀瞬間彈出
+    this._currentRadius = CONFIG.bossOrbitRadius;
 
     // 光束狀態機：idle → telegraph → active → idle
     // 啟動 telegraph 當下鎖定 origin + direction（世界座標），boss 移動時光束不會跟著飄
@@ -176,6 +179,7 @@ export class Boss {
     this.teleportAnimT = 0;
     this.ghostGroup.visible = false;
     this.selfDestructFired = false;
+    this._currentRadius = CONFIG.bossOrbitRadius;
   }
 
   fillHash() {
@@ -219,11 +223,13 @@ export class Boss {
         // 動畫結束 → 瞬移到目標位置
         this.pos[0] = this.teleportTargetX;
         this.pos[2] = this.teleportTargetZ;
-        // 重算軌道相位（為 P1 後續軌道銜接）
-        this.orbitAngle = Math.atan2(
-          this.pos[2] - crystal.position.z,
-          this.pos[0] - crystal.position.x
-        );
+        // 重算軌道相位 + 半徑（為 P1 後續軌道平滑銜接）
+        // 修 bug：原本只重算角度、軌道仍強制 13u → 下一幀 boss 從 target 被彈出
+        // 現用 _currentRadius 記住目前到水晶距離，之後 lerp 回 bossOrbitRadius
+        const tdx = this.pos[0] - crystal.position.x;
+        const tdz = this.pos[2] - crystal.position.z;
+        this._currentRadius = Math.hypot(tdx, tdz);
+        this.orbitAngle = Math.atan2(tdz, tdx);
         this.teleportAnimT = 0;
         this.ghostGroup.visible = false;
       }
@@ -238,13 +244,18 @@ export class Boss {
         this.pos[0] += (dx / d) * step;
         this.pos[2] += (dz / d) * step;
       }
+      // 衝刺中也維持 _currentRadius 與實際距離同步（為下次離開 P2 / 順移後復原用）
+      this._currentRadius = Math.hypot(this.pos[0] - crystal.position.x, this.pos[2] - crystal.position.z);
     } else {
-      // P0/P1 軌道（速度依階段）
+      // P0/P1 軌道（速度依階段）— 半徑用 _currentRadius 平滑 lerp 回標準軌道
       const orbitSpeed = this.phase === 0 ? CONFIG.bossOrbitSpeedP0 : CONFIG.bossOrbitSpeedP1;
       this.orbitAngle += orbitSpeed * dt;
-      const r = CONFIG.bossOrbitRadius + Math.sin(this.orbitAngle * 0.6) * 2.5;
-      this.pos[0] = crystal.position.x + Math.cos(this.orbitAngle) * r;
-      this.pos[2] = crystal.position.z + Math.sin(this.orbitAngle) * r;
+      const targetR = CONFIG.bossOrbitRadius + Math.sin(this.orbitAngle * 0.6) * 2.5;
+      // 指數靠近，~0.6s 走 80%（順移後從 ~3.5u 復原到 13u 軌道約 2 秒完成）
+      const k = 1 - Math.pow(0.5, dt / 0.4);
+      this._currentRadius += (targetR - this._currentRadius) * k;
+      this.pos[0] = crystal.position.x + Math.cos(this.orbitAngle) * this._currentRadius;
+      this.pos[2] = crystal.position.z + Math.sin(this.orbitAngle) * this._currentRadius;
     }
 
     // === P1+ 順移計時（P2 也保留：teleport 會打斷衝刺）===
