@@ -31,6 +31,13 @@ export class Input {
       this.keys.clear();
       this._pending.clear();
     });
+
+    // 修 bug 2026-05-21：右鍵會跳出瀏覽器選單偷走 focus，導致玩家放開 W/A/S/D 時
+    // keyup 事件不會送到 window，this.keys 卡著該鍵 → 玩家不斷往該方向前進。
+    // 直接擋掉 contextmenu，遊戲沒有用到右鍵任何功能，安全副作用零。
+    window.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+    });
   }
 
   /** 每幀開頭呼叫一次，把剛按下的鍵切到 justPressed */
