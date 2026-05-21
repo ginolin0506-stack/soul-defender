@@ -105,6 +105,17 @@ export class Game {
       if (fp && fp.applyStart) fp.applyStart(this, CONFIG);
     }
 
+    // 開局基礎 BUFF：所有玩家 Lv1 自動獲得「動能逆轉」
+    // 玩家反饋 2026-05-21：開局難度過高，給 Dash 一個主動清場手段降低早期壓力
+    {
+      const baseline = PERKS.kinetic_reversal;
+      if (baseline && !this.perks.taken.includes(baseline.id)) {
+        baseline.apply(this);
+        this.perks.taken.push(baseline.id);
+        this.perkUI.renderActiveList(this.perks.taken, PERKS);
+      }
+    }
+
     // 回鍋玩家補貼（非第一局）：開局自動套用 1 個防守型 perk
     // 平衡測試 2026-05-21：非第一局裸跑 90% 死於 26-50s（中位 32.6s），
     // 第一個 perk 還沒升到就被秒。送 1 個 perk 避免「回鍋就死」挫敗感
