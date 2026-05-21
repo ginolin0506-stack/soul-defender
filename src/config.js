@@ -102,11 +102,13 @@ export const CONFIG = {
   bossSpawnTime: 180,                  // fallback
   bossHp: 2800,
   bossRadius: 1.9,
-  bossSpawnDistance: 13,               // 出生時離水晶的距離（隨機角度）— 原 bossOrbitRadius
+  bossOrbitRadius: 13,
   bossSeverRadius: 2.0,                // boss 到「hero-crystal 線段」垂直距離 < 此值 = 壓繫帶
-  // P0/P1 行為：追擊「繫帶中點」(hero/crystal 連線中央)；P2 衝向水晶自爆
-  bossChaseSpeedP0: 2.0,               // 慢追擊（出場期玩家有時間反應）
-  bossChaseSpeedP1: 3.5,               // 加速追擊（< 50% HP 加壓）
+  // 角度追蹤速率（2026-05-21 重整：拋棄定速繞圓，改為一直往最靠近玩家的軌道點移動）
+  // hero 最大切向角速度 ≈ heroSpeed / orbitRadius = 9.5/13 ≈ 0.73 rad/s
+  // P0 略低於該值 → 玩家會被慢慢追上；P1 高於該值 → 玩家無法純切向跑掉
+  bossOrbitSpeedP0: 0.6,
+  bossOrbitSpeedP1: 1.0,
   bossXp: 80,
   bossKillSouls: 25,
 
@@ -116,6 +118,7 @@ export const CONFIG = {
 
   // 壓繫帶懲罰（所有階段共用）
   bossOnTetherCrystalDps: 35,          // boss 在繫帶上時對水晶的 DPS
+  bossOnTetherHeroDps: 12,             // 同時對 hero 的 chip DPS（繞過 iframe）
   // heroHealBlockOnBossTether 已在 hero 區塊（共用）
 
   // P0+ 光束
@@ -125,6 +128,7 @@ export const CONFIG = {
   bossBeamWidth: 0.7,                  // 主光束半寬度
   bossBeamMaxRange: 35,
   // bossBeamDamage 用 heroBeamDamage（hero 區塊）
+  bossBeamCrystalDamage: 22,           // 光束打到水晶時的傷害（水晶 HP 池大故略高於 hero 18）
 
   // P1+ 順移
   bossTeleportInterval: 3.0,

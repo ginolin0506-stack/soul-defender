@@ -394,7 +394,7 @@ export class Game {
     this.tether.severed = severed;
     if (severed) this.effects.addChroma(0.003);
 
-    // === 2026-05-21：boss 壓繫帶 → 水晶 DPS + hero 鎖回血 3s ===
+    // === 2026-05-21：boss 壓繫帶 → 水晶 DPS + hero chip DPS + 鎖回血 3s ===
     if (bossOnTether) {
       let dmg = CONFIG.bossOnTetherCrystalDps * rawDtSec * this.tether.crystalVulnMult;
       if (this.perks.massCollapse && this.hero.gravityWellActive) {
@@ -408,6 +408,11 @@ export class Game {
       if (dmg > 0) this.crystal.takeDamage(dmg);
       this.crystal.hitFlash = Math.max(this.crystal.hitFlash, 0.18);
       this.hero.healBlockTimer = Math.max(this.hero.healBlockTimer, CONFIG.heroHealBlockOnBossTether);
+      // hero 也吃 chip damage（繞過 iframe，連續 drain；dash 無敵期間免疫）
+      if (this.hero.hp > 0 && !this.hero.invulnerable) {
+        this.hero.hp = Math.max(0, this.hero.hp - CONFIG.bossOnTetherHeroDps * rawDtSec);
+        this.hero.hitFlash = Math.max(this.hero.hitFlash, 0.18);
+      }
     }
 
     this.tether.update(dt);
@@ -441,6 +446,12 @@ export class Game {
       this.effects.addTrauma(0.10);
       this.effects.addChroma(0.018);
       this.audio.playTake();
+    }
+    // Boss 光束打中 crystal（如果光束軸線經過水晶半徑）
+    if (this.boss.consumeBeamHitCrystal()) {
+      this._damageCrystal(CONFIG.bossBeamCrystalDamage * this.tether.crystalVulnMult);
+      this.effects.addTrauma(0.10);
+      this.effects.addChroma(0.015);
     }
     // Boss 自爆：對水晶造成大量傷害，hero 若在範圍內吃一半
     if (this.boss.consumeSelfDestruct()) {

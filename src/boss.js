@@ -31,6 +31,10 @@ export class Boss {
     this.isBoss = true;
 
     this.phase = 0;
+    this.orbitAngle = 0;
+    // 軌道半徑「平滑復原」用：順移後 boss 落在 target（通常 ~3.5u），
+    // 之後軌道數學每幀 lerp 把 _currentRadius 拉回 bossOrbitRadius，避免下一幀瞬間彈出
+    this._currentRadius = CONFIG.bossOrbitRadius;
 
     // 光束狀態機：idle → telegraph → active → idle
     // 啟動 telegraph 當下鎖定 origin + direction（世界座標），boss 移動時光束不會跟著飄
@@ -42,7 +46,9 @@ export class Boss {
     this.beamDirX = 0;
     this.beamDirZ = 1;
     this.beamHitHeroFired = false;
-    this._beamShotHit = false;     // 本次 shot 是否已扣血（避免 active 期間重複）
+    this.beamHitCrystalFired = false;
+    this._beamShotHitHero = false;    // 本次 shot 是否已對 hero 扣血
+    this._beamShotHitCrystal = false; // 本次 shot 是否已對 crystal 扣血
 
     // 順移狀態
     this.teleportTimer = CONFIG.bossTeleportInterval;
@@ -160,21 +166,24 @@ export class Boss {
     this.flashTime[0] = 0;
     this.dashHitTag[0] = 0;
     this.phase = 0;
-    const spawnAngle = Math.random() * Math.PI * 2;
-    this.pos[0] = crystal.position.x + Math.cos(spawnAngle) * CONFIG.bossSpawnDistance;
+    this.orbitAngle = Math.random() * Math.PI * 2;
+    this.pos[0] = crystal.position.x + Math.cos(this.orbitAngle) * CONFIG.bossOrbitRadius;
     this.pos[1] = 0;
-    this.pos[2] = crystal.position.z + Math.sin(spawnAngle) * CONFIG.bossSpawnDistance;
+    this.pos[2] = crystal.position.z + Math.sin(this.orbitAngle) * CONFIG.bossOrbitRadius;
     this.mesh.visible = true;
     this.beamTimer = CONFIG.bossBeamInterval;
     this.beamState = 'idle';
     this.beamStateTimer = 0;
     this.beamHitHeroFired = false;
-    this._beamShotHit = false;
+    this.beamHitCrystalFired = false;
+    this._beamShotHitHero = false;
+    this._beamShotHitCrystal = false;
     this.beamMesh.visible = false;
     this.teleportTimer = CONFIG.bossTeleportInterval;
     this.teleportAnimT = 0;
     this.ghostGroup.visible = false;
     this.selfDestructFired = false;
+    this._currentRadius = CONFIG.bossOrbitRadius;
   }
 
   fillHash() {
@@ -186,6 +195,13 @@ export class Boss {
   consumeBeamHit() {
     const fired = this.beamHitHeroFired;
     this.beamHitHeroFired = false;
+    return fired;
+  }
+
+  /** game.js 每幀讀取後 reset；本幀 crystal 是否吃到主光束 */
+  consumeBeamHitCrystal() {
+    const fired = this.beamHitCrystalFired;
+    this.beamHitCrystalFired = false;
     return fired;
   }
 
@@ -211,42 +227,60 @@ export class Boss {
       : (ratio < CONFIG.bossPhase1HpRatio) ? 1 : 0;
 
     // === 移動：依階段 + 順移狀態 ===
-    // 設計（2026-05-21 重做）：拋棄繞圓軌道，P0/P1 改為「追擊繫帶中點」
-    // → boss 會持續壓在 hero ↔ crystal 連線中央，玩家必須走位讓繫帶繞開它
     if (this.teleportAnimT > 0) {
-      // 順移動畫中：boss 物理位置「凍結」於動畫起始位置
+      // 順移動畫中：boss 物理位置「凍結」於動畫起始位置（已在開始時 pos 已凍）
       this.teleportAnimT -= dt;
       if (this.teleportAnimT <= 0) {
-        // 動畫結束 → 瞬移到目標位置（追擊邏輯下一幀從新位置繼續，無需軌道復原）
+        // 動畫結束 → 瞬移到目標位置
         this.pos[0] = this.teleportTargetX;
         this.pos[2] = this.teleportTargetZ;
+        // 重算軌道相位 + 半徑（為 P1 後續軌道平滑銜接）
+        // 修 bug：原本只重算角度、軌道仍強制 13u → 下一幀 boss 從 target 被彈出
+        // 現用 _currentRadius 記住目前到水晶距離，之後 lerp 回 bossOrbitRadius
+        const tdx = this.pos[0] - crystal.position.x;
+        const tdz = this.pos[2] - crystal.position.z;
+        this._currentRadius = Math.hypot(tdx, tdz);
+        this.orbitAngle = Math.atan2(tdz, tdx);
         this.teleportAnimT = 0;
         this.ghostGroup.visible = false;
       }
     } else if (this.phase === 2) {
-      // P2 狂暴：直線衝向水晶（自爆模式，保留原行為）
+      // P2 狂暴：以 0.5×heroSpeed 直線衝向水晶
       const dx = crystal.position.x - this.pos[0];
       const dz = crystal.position.z - this.pos[2];
       const d = Math.hypot(dx, dz);
       if (d > 0.001) {
         const speed = CONFIG.heroSpeed * CONFIG.bossBerserkSpeedMult;
-        const step = Math.min(speed * dt, d);
+        const step = speed * dt;
         this.pos[0] += (dx / d) * step;
         this.pos[2] += (dz / d) * step;
       }
+      // 衝刺中也維持 _currentRadius 與實際距離同步（為下次離開 P2 / 順移後復原用）
+      this._currentRadius = Math.hypot(this.pos[0] - crystal.position.x, this.pos[2] - crystal.position.z);
     } else {
-      // P0/P1：追擊繫帶中點（hero / crystal 連線中央）
-      const midX = (hero.position.x + crystal.position.x) * 0.5;
-      const midZ = (hero.position.z + crystal.position.z) * 0.5;
-      const dx = midX - this.pos[0];
-      const dz = midZ - this.pos[2];
-      const d = Math.hypot(dx, dz);
-      if (d > 0.001) {
-        const speed = this.phase === 0 ? CONFIG.bossChaseSpeedP0 : CONFIG.bossChaseSpeedP1;
-        const step = Math.min(speed * dt, d);  // clamp 避免越過中點抖動
-        this.pos[0] += (dx / d) * step;
-        this.pos[2] += (dz / d) * step;
+      // P0/P1：在圓形軌道上一直追蹤「最靠近玩家的軌道點」（拋棄定速繞圓）
+      // 玩家對水晶的角度 = 軌道上「最靠近玩家」那個點的角度
+      const heroDx = hero.position.x - crystal.position.x;
+      const heroDz = hero.position.z - crystal.position.z;
+      const heroAngle = Math.atan2(heroDz, heroDx);
+      // 最短角度差（含環繞處理）
+      let delta = heroAngle - this.orbitAngle;
+      while (delta > Math.PI) delta -= 2 * Math.PI;
+      while (delta < -Math.PI) delta += 2 * Math.PI;
+      // 階段決定追蹤速率（P0 慢 / P1 快）
+      const pursuitSpeed = this.phase === 0 ? CONFIG.bossOrbitSpeedP0 : CONFIG.bossOrbitSpeedP1;
+      const step = pursuitSpeed * dt;
+      if (Math.abs(delta) <= step) {
+        this.orbitAngle = heroAngle;
+      } else {
+        this.orbitAngle += Math.sign(delta) * step;
       }
+      // 半徑 lerp 回標準軌道半徑（順移後從 target 距離平滑復原；常態為定值）
+      const targetR = CONFIG.bossOrbitRadius;
+      const k = 1 - Math.pow(0.5, dt / 0.4);
+      this._currentRadius += (targetR - this._currentRadius) * k;
+      this.pos[0] = crystal.position.x + Math.cos(this.orbitAngle) * this._currentRadius;
+      this.pos[2] = crystal.position.z + Math.sin(this.orbitAngle) * this._currentRadius;
     }
 
     // === P1+ 順移計時（P2 也保留：teleport 會打斷衝刺）===
@@ -259,7 +293,7 @@ export class Boss {
     }
 
     // === 光束（全階段）===
-    this._updateBeam(dt, hero);
+    this._updateBeam(dt, hero, crystal);
 
     // === P2 自爆：碰到水晶觸發 ===
     if (this.phase === 2 && this.teleportAnimT <= 0) {
@@ -330,11 +364,12 @@ export class Boss {
     this.beamState = 'idle';
     this.beamStateTimer = 0;
     this.beamTimer = CONFIG.bossBeamInterval;
-    this._beamShotHit = false;
+    this._beamShotHitHero = false;
+    this._beamShotHitCrystal = false;
     this.beamMesh.visible = false;
   }
 
-  _updateBeam(dt, hero) {
+  _updateBeam(dt, hero, crystal) {
     // 順移動畫中暫停光束狀態機（避免 boss 假裝在原位卻射出新光束）
     if (this.teleportAnimT > 0) {
       this.beamMesh.visible = false;
@@ -353,7 +388,8 @@ export class Boss {
           this.beamDirZ = dz / d;
           this.beamState = 'telegraph';
           this.beamStateTimer = CONFIG.bossBeamTelegraph;
-          this._beamShotHit = false;
+          this._beamShotHitHero = false;
+          this._beamShotHitCrystal = false;
         }
       } else if (this.beamState === 'telegraph') {
         this.beamStateTimer -= dt;
@@ -363,8 +399,8 @@ export class Boss {
         }
       } else if (this.beamState === 'active') {
         this.beamStateTimer -= dt;
-        // hit 判定：hero 到光束軸（origin + dir）的垂直距離 < beamWidth 且投影在 [0, maxRange]
-        if (!this._beamShotHit) {
+        // hit 判定：hero 到光束軸的垂直距離 < beamWidth 且投影在 [0, maxRange]
+        if (!this._beamShotHitHero) {
           const toX = hero.position.x - this.beamOriginX;
           const toZ = hero.position.z - this.beamOriginZ;
           const along = toX * this.beamDirX + toZ * this.beamDirZ;
@@ -374,7 +410,22 @@ export class Boss {
             const perpDist = Math.hypot(perpX, perpZ);
             if (perpDist < CONFIG.bossBeamWidth) {
               this.beamHitHeroFired = true;
-              this._beamShotHit = true;
+              this._beamShotHitHero = true;
+            }
+          }
+        }
+        // hit 判定：crystal 也可能在光束線上（crystal 半徑納入容差）
+        if (!this._beamShotHitCrystal && crystal) {
+          const toX = crystal.position.x - this.beamOriginX;
+          const toZ = crystal.position.z - this.beamOriginZ;
+          const along = toX * this.beamDirX + toZ * this.beamDirZ;
+          if (along >= 0 && along <= CONFIG.bossBeamMaxRange) {
+            const perpX = toX - along * this.beamDirX;
+            const perpZ = toZ - along * this.beamDirZ;
+            const perpDist = Math.hypot(perpX, perpZ);
+            if (perpDist < CONFIG.bossBeamWidth + CONFIG.crystalRadius) {
+              this.beamHitCrystalFired = true;
+              this._beamShotHitCrystal = true;
             }
           }
         }
