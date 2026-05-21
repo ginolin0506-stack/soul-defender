@@ -10,6 +10,13 @@ if (botCfg && botCfg.headless) {
   window.requestAnimationFrame = (cb) => setTimeout(() => cb(performance.now()), 0);
 }
 
+// === 雲端版隱藏 debug 召喚鍵的說明（B/V/C/J/N），這些鍵也只在 localhost game.js 才執行 ===
+const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]', '0.0.0.0', '']);
+const IS_LOCALHOST = LOCAL_HOSTS.has(location.hostname);
+if (!IS_LOCALHOST) {
+  for (const el of document.querySelectorAll('.debug-only')) el.style.display = 'none';
+}
+
 // === 每次開啟自動清掉「自動存檔」，但保留「手動 slot」===
 const RESET_ON_LOAD = true;
 if (RESET_ON_LOAD) {

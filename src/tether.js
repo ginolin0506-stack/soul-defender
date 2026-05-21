@@ -168,8 +168,10 @@ export class Tether {
     this.soulHidden = new Uint8Array(this.maxSouls).fill(1);
     this.soulOrbitTime = new Float32Array(this.maxSouls);   // W4: 軌道剩餘時間
     this.soulOrbitAngle = new Float32Array(this.maxSouls);  // W4: 軌道初始角度
+    this.soulFastReturn = new Uint8Array(this.maxSouls);    // Soul Debt 半衰期釋放後 2× 衝回水晶
     this.soulCount = 0;
     this.orbitalCount = 0;                                  // W4: 當前軌道靈魂數
+    this.microPulseQueue = [];                              // Soul Debt 過載釋放：{x, z} 由 game.js 結算
     this._hideM = new THREE.Matrix4().makeScale(0, 0, 0);
     for (let i = 0; i < this.maxSouls; i++) this.soulMesh.setMatrixAt(i, this._hideM);
     this.soulMesh.instanceMatrix.needsUpdate = true;
@@ -311,6 +313,7 @@ export class Tether {
       this.soulHidden[i] = 0;
       this.soulOrbitTime[i] = 0;
       this.soulOrbitAngle[i] = Math.random() * Math.PI * 2;   // W4: 進軌道時起始角度
+      this.soulFastReturn[i] = 0;
       this.soulCount++;
       return true;
     }
@@ -342,9 +345,15 @@ export class Tether {
       if (this.soulStage[i] === 2) {
         this.soulOrbitTime[i] -= dt;
         if (this.soulOrbitTime[i] <= 0) {
-          // 軌道結束 → 朝水晶
+          // 軌道結束 → 過載釋放微脈衝 + 2× 速沿 tether 衝回水晶
           this.soulStage[i] = 1;
+          this.soulFastReturn[i] = 1;
           this.orbitalCount--;
+          // 在 hero 當前位置觸發微脈衝（game.js 結算 AOE）
+          this.microPulseQueue.push({
+            x: hero.position.x,
+            z: hero.position.z,
+          });
         } else {
           // 持續軌道
           const ang = this.soulOrbitAngle[i] + this.timeAccum * 2.0;
@@ -374,7 +383,9 @@ export class Tether {
       }
       const ddx = tx - sx, ddy = ty - sy, ddz = tz - sz;
       const dd = Math.hypot(ddx, ddy, ddz);
-      const step = speed * dt;
+      // Soul Debt 過載釋放後：以 returnSpeedMult 速度沿 tether 衝回水晶
+      const effectiveSpeed = this.soulFastReturn[i] ? speed * CONFIG.soulDebtReturnSpeedMult : speed;
+      const step = effectiveSpeed * dt;
       if (dd <= step) {
         // 到達目標
         if (this.soulStage[i] === 0 && !skipHero) {

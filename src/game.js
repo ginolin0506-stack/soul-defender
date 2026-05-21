@@ -27,6 +27,9 @@ export class Game {
     this.renderer = renderer;
     this._loadSlotN = loadSlotN;
     this._botCfg = options.bot || null;
+    // Debug 召喚鍵僅在 localhost 啟用，避免雲端玩家用 B/V/C/J/N 破壞遊戲體驗
+    const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]', '0.0.0.0', '']);
+    this._debugAllowed = typeof location === 'undefined' || LOCAL_HOSTS.has(location.hostname);
 
     const built = buildScene();
     this.scene = built.scene;
@@ -157,6 +160,10 @@ export class Game {
     this.splitterSpawnTimer = 0;
     this.bossSpawned = false;
     this.bossWarningShown = false;
+    this._bossWarningStartElapsed = 0;       // Level-Gated 倒數起點
+    this._nexusWarningStartElapsed = 0;
+    this._chronosWarningStartElapsed = 0;
+    this._muWarningStartElapsed = 0;
     this._echoQueue = [];
     this._pendingLevelUps = 0;       // B1: 多重升級佇列
     this._splitterTutorialFired = false;  // B4: splitter 教學觸發旗
@@ -491,6 +498,9 @@ export class Game {
     // === Echo pulse ===
     this._processEchoes();
 
+    // === Soul Debt micro pulse（半衰期過載釋放）===
+    this._processSoulDebtMicroPulses();
+
     // === 怪撞水晶 ===
     const leechHits = this.swarm.collectCrystalHits(this.crystal.position.x, this.crystal.position.z, CONFIG.crystalHitRange);
     const splitterHits = this.splitters.collectCrystalHits(this.crystal.position.x, this.crystal.position.z, CONFIG.crystalHitRange + 0.5);
@@ -607,17 +617,19 @@ export class Game {
     this.camera.lookAt(this._camLook);
     this.effects.applyShake();
 
-    // === Debug ===
-    if (this.input.wasPressed('KeyB')) {
-      this.swarm.spawnBurst(100, CONFIG.spawnRingRadiusMin, CONFIG.spawnRingRadiusMax);
-    }
-    if (this.input.wasPressed('KeyN')) this._gainXP(this.xpToNext);
-    if (this.input.wasPressed('KeyV')) this.slingers.spawnBurst(3, CONFIG.spawnRingRadiusMin, CONFIG.spawnRingRadiusMax);
-    if (this.input.wasPressed('KeyC')) this.splitters.spawnBurst(3, CONFIG.spawnRingRadiusMin, CONFIG.spawnRingRadiusMax);
-    if (this.input.wasPressed('KeyJ') && !this.boss.alive[0]) {
-      this.boss.spawn(this.crystal);
-      this.bossSpawned = true;
-      this.tutorial.showCustom('OHM 強制召喚 (debug)', 4);
+    // === Debug ===（只在本機 localhost 啟用；雲端部署後玩家無法召喚怪物/boss/強升）
+    if (this._debugAllowed) {
+      if (this.input.wasPressed('KeyB')) {
+        this.swarm.spawnBurst(100, CONFIG.spawnRingRadiusMin, CONFIG.spawnRingRadiusMax);
+      }
+      if (this.input.wasPressed('KeyN')) this._gainXP(this.xpToNext);
+      if (this.input.wasPressed('KeyV')) this.slingers.spawnBurst(3, CONFIG.spawnRingRadiusMin, CONFIG.spawnRingRadiusMax);
+      if (this.input.wasPressed('KeyC')) this.splitters.spawnBurst(3, CONFIG.spawnRingRadiusMin, CONFIG.spawnRingRadiusMax);
+      if (this.input.wasPressed('KeyJ') && !this.boss.alive[0]) {
+        this.boss.spawn(this.crystal);
+        this.bossSpawned = true;
+        this.tutorial.showCustom('OHM 強制召喚 (debug)', 4);
+      }
     }
 
     this._updateHUD();
@@ -750,14 +762,20 @@ export class Game {
       }
     }
 
-    // Boss（第一局關閉；bot easy 模式強制允許）
+    // Boss Ohm — Gemini Level-Gated Timeline
+    // Trigger：level ≥ 15 啟動 15 秒倒數；或絕對時間 fallback（避免完全卡住升等的玩家無 boss 體驗）
     if ((!this.isFirstRun || this._botForceBoss) && !this.bossSpawned && !this.boss.alive[0]) {
-      if (!this.bossWarningShown && this.elapsed >= CONFIG.bossSpawnTime - CONFIG.bossWarningLead) {
-        this.bossWarningShown = true;
-        this.tutorial.trigger('bossWarning');
-        this.audio.playGameOver();
+      if (!this.bossWarningShown) {
+        const levelTriggered = this.level >= CONFIG.bossSpawnLevel;
+        const timeFallback = this.elapsed >= CONFIG.bossSpawnTime - CONFIG.bossWarningLead;
+        if (levelTriggered || timeFallback) {
+          this.bossWarningShown = true;
+          this._bossWarningStartElapsed = this.elapsed;
+          this.tutorial.trigger('bossWarning');
+          this.audio.playGameOver();
+        }
       }
-      if (this.elapsed >= CONFIG.bossSpawnTime) {
+      if (this.bossWarningShown && this.elapsed - this._bossWarningStartElapsed >= CONFIG.bossWarningLead) {
         this.bossSpawned = true;
         this.boss.spawn(this.crystal);
         this.tutorial.trigger('boss');
@@ -766,14 +784,19 @@ export class Game {
       }
     }
 
-    // W4 Nexus（第一局關閉 + Ohm 已死才生 — 不雙 boss）
+    // W4 Nexus — Level-Gated（LV40）+ Ohm 已死才生
     if ((!this.isFirstRun || this._botForceBoss) && !this.nexusSpawned && !this.nexus.alive[0] && !this.boss.alive[0]) {
-      if (!this.nexusWarningShown && this.elapsed >= CONFIG.nexusSpawnTime - CONFIG.nexusWarningLead) {
-        this.nexusWarningShown = true;
-        this.tutorial.showCustom('⚠ NEXUS 接近中...將強制隔絕你與水晶', 11);
-        this.audio.playGameOver();
+      if (!this.nexusWarningShown) {
+        const levelTriggered = this.level >= CONFIG.nexusSpawnLevel;
+        const timeFallback = this.elapsed >= CONFIG.nexusSpawnTime - CONFIG.nexusWarningLead;
+        if (levelTriggered || timeFallback) {
+          this.nexusWarningShown = true;
+          this._nexusWarningStartElapsed = this.elapsed;
+          this.tutorial.showCustom('⚠ NEXUS 接近中...將強制隔絕你與水晶', 11);
+          this.audio.playGameOver();
+        }
       }
-      if (this.elapsed >= CONFIG.nexusSpawnTime) {
+      if (this.nexusWarningShown && this.elapsed - this._nexusWarningStartElapsed >= CONFIG.nexusWarningLead) {
         this.nexusSpawned = true;
         this.nexus.spawn(this.crystal);
         this.tutorial.showCustom('NEXUS 降臨！毀掉 3 根量子干擾柱才能擊破本體', 13);
@@ -821,15 +844,20 @@ export class Game {
       }
     }
 
-    // W7 Mu 正常模式：t=900s 首次召喚（終局考驗）
-    // 不再排除 endlessMode — 玩家如果在 Mu 出生前進 endless（殺 Nexus），Mu 仍按時程登場
+    // W7 Mu — Level-Gated（LV80）+ 其他 boss 都不在場才生
     if ((!this.isFirstRun || this._botForceBoss) && !this.muSpawned && !this.mu.alive[0]) {
-      if (!this.muWarningShown && this.elapsed >= CONFIG.muSpawnTime - CONFIG.muWarningLead) {
-        this.muWarningShown = true;
-        this.tutorial.showCustom('☢ MU 接近中... PERKS 將被解構，tether 穿心是唯一解 ☢', 14);
-        this.audio.playGameOver();
+      if (!this.muWarningShown) {
+        const levelTriggered = this.level >= CONFIG.muSpawnLevel;
+        const timeFallback = this.elapsed >= CONFIG.muSpawnTime - CONFIG.muWarningLead;
+        if (levelTriggered || timeFallback) {
+          this.muWarningShown = true;
+          this._muWarningStartElapsed = this.elapsed;
+          this.tutorial.showCustom('☢ MU 接近中... PERKS 將被解構，tether 穿心是唯一解 ☢', 14);
+          this.audio.playGameOver();
+        }
       }
-      if (this.elapsed >= CONFIG.muSpawnTime && !this.boss.alive[0] && !this.nexus.alive[0] && !this.chronos.alive[0]) {
+      if (this.muWarningShown && this.elapsed - this._muWarningStartElapsed >= CONFIG.muWarningLead
+          && !this.boss.alive[0] && !this.nexus.alive[0] && !this.chronos.alive[0]) {
         this.muSpawned = true;
         this._muSnapshotPerks();
         this.mu.spawn(this.crystal);
@@ -841,15 +869,20 @@ export class Game {
       }
     }
 
-    // W6 Chronos 正常模式：t=540s 首次召喚
-    // 不再排除 endlessMode — Chronos 未登場前 endless 也走這個 normal spawn time
+    // W6 Chronos — Level-Gated（LV60）+ Ohm/Nexus 不在場才生
     if ((!this.isFirstRun || this._botForceBoss) && !this.chronosSpawned && !this.chronos.alive[0]) {
-      if (!this.chronosWarningShown && this.elapsed >= CONFIG.chronosSpawnTime - CONFIG.chronosWarningLead) {
-        this.chronosWarningShown = true;
-        this.tutorial.showCustom('⚠ CHRONOS 接近中... 將全面加速怪潮', 11);
-        this.audio.playGameOver();
+      if (!this.chronosWarningShown) {
+        const levelTriggered = this.level >= CONFIG.chronosSpawnLevel;
+        const timeFallback = this.elapsed >= CONFIG.chronosSpawnTime - CONFIG.chronosWarningLead;
+        if (levelTriggered || timeFallback) {
+          this.chronosWarningShown = true;
+          this._chronosWarningStartElapsed = this.elapsed;
+          this.tutorial.showCustom('⚠ CHRONOS 接近中... 將全面加速怪潮', 11);
+          this.audio.playGameOver();
+        }
       }
-      if (this.elapsed >= CONFIG.chronosSpawnTime && !this.boss.alive[0] && !this.nexus.alive[0]) {
+      if (this.chronosWarningShown && this.elapsed - this._chronosWarningStartElapsed >= CONFIG.chronosWarningLead
+          && !this.boss.alive[0] && !this.nexus.alive[0]) {
         this.chronosSpawned = true;
         this.chronos.spawn(this.crystal);
         this.tutorial.showCustom('CHRONOS 降臨！怪物時間 ×2 — Dash 或 Tether Snap 可短暫減速', 13);
@@ -888,6 +921,31 @@ export class Game {
       this.audio.playHit(1.3);
     }
     this._echoQueue = remaining;
+  }
+
+  /** Soul Debt 半衰期：靈魂軌道結束時釋放微脈衝（30% 傷害、60% 半徑）然後 2× 速衝回水晶 */
+  _processSoulDebtMicroPulses() {
+    const queue = this.tether.microPulseQueue;
+    if (!queue || queue.length === 0) return;
+    const radius = CONFIG.heroPulseRadius * (this.perks.pulseRadiusMult || 1)
+      * (this.perks._earlyRadiusBonus ?? 1) * CONFIG.soulDebtMicroPulseRadiusMult;
+    const r2 = radius * radius;
+    const baseDmg = CONFIG.heroPulseBaseDamage * this.tether.heroDmgMult
+      * CONFIG.soulDebtMicroPulseDmgMult * (this.perks.heroDmgGlobal || 1);
+    for (const ev of queue) {
+      this.hero.spawnPulseRing(ev.x, ev.z, radius, 0xddaaff, 0.55);
+      for (const sw of this._allSwarms()) {
+        for (let i = 0; i < sw.maxCount; i++) {
+          if (!sw.alive[i]) continue;
+          const dx = sw.pos[i*3+0] - ev.x;
+          const dz = sw.pos[i*3+2] - ev.z;
+          if (dx*dx + dz*dz > r2) continue;
+          const killed = sw.damage(i, baseDmg);
+          if (killed) this._onKill(sw, sw.pos[i*3+0], sw.pos[i*3+2]);
+        }
+      }
+    }
+    queue.length = 0;
   }
 
   _triggerTetherSnap() {

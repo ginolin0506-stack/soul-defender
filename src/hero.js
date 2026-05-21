@@ -251,10 +251,31 @@ export class Hero {
       }
     }
 
-    // Lone Wolf
+    // Lone Wolf — Gemini Tether-Tension-Buffer 重構
+    // 外圈：tetherDistance > loneWolfDistanceTrigger 時線性加成（1.0 → loneWolfDistanceMaxMult）
+    // 困獸：距離 < loneWolfInnerDistance 且周圍密度 > loneWolfDensityThreshold → 強制 ×loneWolfTrappedMult
     if (this.perks?.loneWolf && hits.length > 0) {
-      const mult = hits.length === 1 ? 3.0 : (hits.length === 2 ? 2.0 : 1.0);
-      for (const h of hits) h.dmg *= mult;
+      let loneMult = 1.0;
+      if (tetherDistance > CONFIG.loneWolfDistanceTrigger) {
+        const span = Math.max(0.01, CONFIG.loneWolfDistanceCap - CONFIG.loneWolfDistanceTrigger);
+        const t = Math.min(1, (tetherDistance - CONFIG.loneWolfDistanceTrigger) / span);
+        loneMult = 1 + (CONFIG.loneWolfDistanceMaxMult - 1) * t;
+      } else if (tetherDistance < CONFIG.loneWolfInnerDistance) {
+        // 困獸偵測：用 hash 查詢半徑內活著的怪物
+        let nearby = 0;
+        const dr = CONFIG.loneWolfDensityRadius;
+        for (let s = 0; s < swarms.length; s++) {
+          const cand = hashes[s].queryXZ(this.position.x, this.position.z, dr);
+          const swarm = swarms[s];
+          for (let k = 0; k < cand.length; k++) {
+            if (swarm.alive[cand[k]]) nearby++;
+          }
+        }
+        if (nearby > CONFIG.loneWolfDensityThreshold) loneMult = CONFIG.loneWolfTrappedMult;
+      }
+      if (loneMult !== 1.0) {
+        for (const h of hits) h.dmg *= loneMult;
+      }
     }
 
     // W4 Spatial Folding: 繫帶距離 ≥ 門檻時，最高 HP 目標吃 ×2

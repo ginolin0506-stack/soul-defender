@@ -88,8 +88,11 @@ export const CONFIG = {
   mitesPushForce: 1.4,         // 撞到英雄推幾單位（朝水晶方向）
 
   // === Boss Ohm ===
-  bossSpawnTime: 180,
-  bossWarningLead: 10,
+  // Gemini 2026-05-21 Level-Gated Timeline：原本「絕對時間 180s」改為「等級 ≥ 15 才觸發倒數」
+  // 解決前期運氣差被秒、發育快又無聊等待的雙峰問題；bossSpawnTime 保留作為 fallback（沒升到 LV 也會出）
+  bossSpawnLevel: 15,
+  bossWarningLead: 15,           // Gemini：15 秒倒數警告
+  bossSpawnTime: 180,            // fallback：絕對時間上限（沒升到 LV15 也會出）
   // Bot 平衡測試 2026-05-21：滿配 build 平均 13.7s 解掉 Ohm，缺乏威嚇感
   // HP 2200 → 2800 (+27%)、震波 5.0s → 4.0s（更頻繁壓力）
   bossHp: 2800,
@@ -118,7 +121,8 @@ export const CONFIG = {
   bossOverloadBypassShield: true,      // discharge 沿 tether 直接打水晶，繞過 aegis 盾
 
   // === Boss Nexus (W4) ===
-  nexusSpawnTime: 360,
+  nexusSpawnLevel: 40,           // Gemini Level-Gated：LV40 觸發倒數
+  nexusSpawnTime: 360,           // fallback
   nexusWarningLead: 12,
   nexusHp: 2800,
   nexusRadius: 2.2,
@@ -145,10 +149,16 @@ export const CONFIG = {
   massCollapseStandTime: 1.5,
   massCollapseRadius: 8,
   massCollapseCrystalDmgReduction: 0.25,
-  soulDebtOrbitTime: 5.0,
+  // Gemini 2026-05-21 Soul Debt 重構：「動態延遲回流」
+  // 原本 5s 攔截 → 改 3s 半衰期，過載釋放微脈衝後沿 tether 2× 速衝回水晶
+  // 解決「靈魂在英雄旁繞圈，水晶沒充能而暴斃」的卡池內鬼問題
+  soulDebtOrbitTime: 3.0,
   soulDebtOrbitRadius: 2.2,
   soulDebtDmgPerSoul: 0.03,
   soulDebtMaxOrbit: 30,
+  soulDebtReturnSpeedMult: 2.0,       // 軌道結束後沿 tether 衝回水晶的速度倍率
+  soulDebtMicroPulseDmgMult: 0.3,     // 過載釋放：以 hero 正常脈衝傷害的 30% 觸發 AOE
+  soulDebtMicroPulseRadiusMult: 0.6,  // 半徑 60%
 
   // === W5 時間軸天賦 ===
   criticalSuspensionDuration: 0.6,   // hit-stop 觸發後子彈時間總時長（含 hit-stop）
@@ -165,7 +175,8 @@ export const CONFIG = {
   endlessMaxEnemies: 2500,
 
   // === W6 Boss Chronos ===
-  chronosSpawnTime: 540,              // 正常模式 9 分鐘登場
+  chronosSpawnLevel: 60,              // Gemini Level-Gated：LV60 觸發倒數
+  chronosSpawnTime: 540,              // fallback
   chronosWarningLead: 12,
   chronosHp: 3200,
   chronosRadius: 1.6,
@@ -202,7 +213,8 @@ export const CONFIG = {
   kickDensityCap: 1500,               // 怪物數量達這個就是滿密度
 
   // === W7 終局 Boss Mu ===
-  muSpawnTime: 900,                   // 15 分鐘登場
+  muSpawnLevel: 80,                   // Gemini Level-Gated：LV80 觸發倒數
+  muSpawnTime: 900,                   // fallback
   muWarningLead: 15,
   muHp: 3500,                         // Core HP
   muRadius: 2.0,
@@ -261,6 +273,16 @@ export const CONFIG = {
   xpExponent: 1.18,
 
   // === 天賦 ===
+  // Gemini 2026-05-21 Lone Wolf 重構：「張力補償」雙模式
+  // 解決原本「3+ 敵人 ×1」讓 bot 強、真人後期擠在水晶旁倍率歸零的相剋問題
+  // 外圈：距離 > 15 線性加成；困獸：距離 < 10 + 密度 > 150 強制 +40% 倍率
+  loneWolfDistanceTrigger: 15,        // 距離大於這個值起開始線性加成
+  loneWolfDistanceCap: 30,            // 線性加成到頂的距離
+  loneWolfDistanceMaxMult: 2.0,       // 在 cap 距離時的最大倍率
+  loneWolfInnerDistance: 10,          // 困獸模式：距離小於這個才偵測密度
+  loneWolfDensityRadius: 5,           // 困獸密度偵測半徑
+  loneWolfDensityThreshold: 150,      // 密度門檻
+  loneWolfTrappedMult: 1.4,           // 困獸觸發的暴擊加成倍率
   aegisSoulsPerShield: 6,
   aegisShieldPerStack: 35,
   echoPulseDelay: 0.32,
