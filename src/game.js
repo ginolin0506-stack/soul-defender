@@ -69,8 +69,6 @@ export class Game {
     // 若 ?easy=1 則保留第一局保護（+HP / 慢 spawn）但仍強制 boss 出生
     if (this._botCfg && !this._botCfg.easy) this.meta.runs = 1;
     this.isFirstRun = (this.meta.runs === 0);
-    // bot easy 模式專用 flag：仍視為 firstRun 但 boss 允許 spawn
-    this._botForceBoss = !!(this._botCfg && this._botCfg.easy);
     this.tutorial = new Tutorial(this.isFirstRun);
 
     this.hero = new Hero(this.scene, this.perks);
@@ -764,7 +762,8 @@ export class Game {
 
     // Boss Ohm — Gemini Level-Gated Timeline
     // Trigger：level ≥ 15 啟動 15 秒倒數；或絕對時間 fallback（避免完全卡住升等的玩家無 boss 體驗）
-    if ((!this.isFirstRun || this._botForceBoss) && !this.bossSpawned && !this.boss.alive[0]) {
+    // 不額外鎖 isFirstRun：LV gate 已自我保護新手；舊版鎖 + 自動清存檔會讓無 slot 玩家永遠看不到 boss
+    if (!this.bossSpawned && !this.boss.alive[0]) {
       if (!this.bossWarningShown) {
         const levelTriggered = this.level >= CONFIG.bossSpawnLevel;
         const timeFallback = this.elapsed >= CONFIG.bossSpawnTime - CONFIG.bossWarningLead;
@@ -785,7 +784,7 @@ export class Game {
     }
 
     // W4 Nexus — Level-Gated（LV40）+ Ohm 已死才生
-    if ((!this.isFirstRun || this._botForceBoss) && !this.nexusSpawned && !this.nexus.alive[0] && !this.boss.alive[0]) {
+    if (!this.nexusSpawned && !this.nexus.alive[0] && !this.boss.alive[0]) {
       if (!this.nexusWarningShown) {
         const levelTriggered = this.level >= CONFIG.nexusSpawnLevel;
         const timeFallback = this.elapsed >= CONFIG.nexusSpawnTime - CONFIG.nexusWarningLead;
@@ -845,7 +844,7 @@ export class Game {
     }
 
     // W7 Mu — Level-Gated（LV80）+ 其他 boss 都不在場才生
-    if ((!this.isFirstRun || this._botForceBoss) && !this.muSpawned && !this.mu.alive[0]) {
+    if (!this.muSpawned && !this.mu.alive[0]) {
       if (!this.muWarningShown) {
         const levelTriggered = this.level >= CONFIG.muSpawnLevel;
         const timeFallback = this.elapsed >= CONFIG.muSpawnTime - CONFIG.muWarningLead;
@@ -870,7 +869,7 @@ export class Game {
     }
 
     // W6 Chronos — Level-Gated（LV60）+ Ohm/Nexus 不在場才生
-    if ((!this.isFirstRun || this._botForceBoss) && !this.chronosSpawned && !this.chronos.alive[0]) {
+    if (!this.chronosSpawned && !this.chronos.alive[0]) {
       if (!this.chronosWarningShown) {
         const levelTriggered = this.level >= CONFIG.chronosSpawnLevel;
         const timeFallback = this.elapsed >= CONFIG.chronosSpawnTime - CONFIG.chronosWarningLead;
