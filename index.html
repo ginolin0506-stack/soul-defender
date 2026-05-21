@@ -29,22 +29,14 @@
       user-select: none;
       text-shadow: 0 2px 6px rgba(0,0,0,0.8);
     }
-    #crystal-shield-wrap {
-      width: 320px;
-      height: 6px;
-      background: rgba(0,0,0,0.5);
-      border-radius: 2px;
-      overflow: hidden;
-      margin-bottom: 3px;
-      box-shadow: 0 0 6px rgba(102,204,255,0.3);
-    }
-    #crystal-shield {
-      height: 100%;
-      width: 0%;
-      background: linear-gradient(90deg, #66ccff, #aaeeff);
-      transition: width 0.18s;
+    /* === 水晶 HP + 護盾覆蓋（2026-05-21 重整） === */
+    #crystal-hp-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
     }
     #crystal-hp-wrap {
+      position: relative;
       width: 320px;
       height: 16px;
       background: rgba(0,0,0,0.55);
@@ -59,6 +51,40 @@
       background: linear-gradient(90deg, #b266ff, #e0c0ff);
       transition: width 0.18s ease-out;
       box-shadow: inset 0 0 8px rgba(255,255,255,0.4);
+    }
+    /* 護盾覆蓋層：更深的紫色，蓋在 HP 區段上 */
+    #crystal-shield-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      height: 100%;
+      width: 0%;
+      background: rgba(35, 8, 70, 0.55);
+      pointer-events: none;
+      transition: width 0.18s ease-out, opacity 0.2s;
+      opacity: 0;
+    }
+    #crystal-shield-overlay.active {
+      opacity: 1;
+      animation: shield-glow 1.6s ease-in-out infinite;
+    }
+    @keyframes shield-glow {
+      0%, 100% { box-shadow: inset 0 0 8px rgba(80, 20, 130, 0.7); }
+      50%      { box-shadow: inset 0 0 16px rgba(140, 60, 200, 0.95); }
+    }
+    /* 護盾倍率文字（×N） */
+    #shield-mult {
+      display: none;
+      min-width: 42px;
+      color: #d8b0ff;
+      font-weight: 800;
+      font-size: 16px;
+      letter-spacing: 1px;
+      font-family: ui-monospace, Consolas, monospace;
+      text-shadow: 0 0 8px rgba(178, 102, 255, 0.85), 0 2px 4px #000;
+    }
+    #shield-mult.active {
+      display: inline-block;
     }
     #xp-bar-wrap {
       width: 320px;
@@ -75,34 +101,34 @@
       background: linear-gradient(90deg, #66ffd9, #aaffd0);
       transition: width 0.12s;
     }
-    /* 英雄獨立 HP 條（2026-05-21） */
+    /* 英雄獨立 HP 條（紅色 — 與紫色水晶條明確區隔） */
     #hero-hp-wrap {
       width: 320px;
       height: 12px;
       background: rgba(0,0,0,0.55);
-      border: 1px solid rgba(0,217,255,0.7);
+      border: 1px solid rgba(255, 60, 70, 0.75);
       border-radius: 3px;
       overflow: hidden;
       margin-top: 4px;
-      box-shadow: 0 0 10px rgba(0,217,255,0.4), inset 0 0 4px rgba(0,0,0,0.5);
+      box-shadow: 0 0 10px rgba(255, 60, 70, 0.45), inset 0 0 4px rgba(0,0,0,0.5);
     }
     #hero-hp {
       height: 100%;
       width: 100%;
-      background: linear-gradient(90deg, #00d9ff, #aaffff);
+      background: linear-gradient(90deg, #ff2233, #ff7766);
       transition: width 0.15s ease-out;
       box-shadow: inset 0 0 6px rgba(255,255,255,0.5);
     }
     #hero-hp.low {
-      background: linear-gradient(90deg, #ff3344, #ff8866);
-      animation: hero-hp-pulse 0.6s ease-in-out infinite;
+      background: linear-gradient(90deg, #ff4455, #ffaa77);
+      animation: hero-hp-pulse 0.55s ease-in-out infinite;
     }
     #hero-hp.blocked {
       filter: grayscale(1) brightness(0.65);
     }
     @keyframes hero-hp-pulse {
       0%, 100% { box-shadow: inset 0 0 6px rgba(255,255,255,0.5), 0 0 8px rgba(255,80,80,0.6); }
-      50% { box-shadow: inset 0 0 6px rgba(255,255,255,0.5), 0 0 20px rgba(255,120,120,1.0); }
+      50%      { box-shadow: inset 0 0 6px rgba(255,255,255,0.5), 0 0 24px rgba(255,120,120,1.0); }
     }
     #hud-text {
       margin-top: 8px;
@@ -944,8 +970,13 @@
   <canvas id="game"></canvas>
 
   <div id="hud">
-    <div id="crystal-shield-wrap"><div id="crystal-shield"></div></div>
-    <div id="crystal-hp-wrap"><div id="crystal-hp"></div></div>
+    <div id="crystal-hp-row">
+      <div id="crystal-hp-wrap">
+        <div id="crystal-hp"></div>
+        <div id="crystal-shield-overlay"></div>
+      </div>
+      <span id="shield-mult"></span>
+    </div>
     <div id="xp-bar-wrap"><div id="xp-bar"></div></div>
     <div id="hero-hp-wrap"><div id="hero-hp"></div></div>
     <div id="hud-text">

@@ -182,7 +182,8 @@ export class Game {
 
     this.ui = {
       hpBar: document.getElementById('crystal-hp'),
-      shieldBar: document.getElementById('crystal-shield'),
+      shieldOverlay: document.getElementById('crystal-shield-overlay'),
+      shieldMult: document.getElementById('shield-mult'),
       hpText: document.getElementById('hp-text'),
       tether: document.getElementById('tether-mult'),
       kills: document.getElementById('kills'),
@@ -1136,9 +1137,22 @@ export class Game {
     const xpPct = Math.min(1, this.xp / this.xpToNext);
     this.ui.xpBar.style.width = (xpPct * 100).toFixed(1) + '%';
 
-    if (this.ui.shieldBar) {
-      const shieldPct = Math.min(1, this.perks.shieldHp / this.crystal.maxHp);
-      this.ui.shieldBar.style.width = shieldPct > 0 ? (shieldPct * 100).toFixed(1) + '%' : '0';
+    // 護盾覆蓋層（2026-05-21 重整）：在水晶 HP 上覆蓋更深紫色 + 右側 ×N 倍率
+    // 倍率 = Aegis 護盾層數（aegisStacks 1-5，對應「每次充能 ×N 護盾量」）
+    if (this.ui.shieldOverlay && this.ui.shieldMult) {
+      const shield = this.perks.shieldHp;
+      const stacks = this.perks.aegisStacks || 0;
+      if (shield > 0 && stacks > 0) {
+        // 覆蓋寬度跟隨 HP 填滿區段（蓋在「目前還活著的 HP」上）
+        this.ui.shieldOverlay.style.width = (hpPct * 100).toFixed(1) + '%';
+        this.ui.shieldOverlay.classList.add('active');
+        this.ui.shieldMult.textContent = `×${stacks}`;
+        this.ui.shieldMult.classList.add('active');
+      } else {
+        this.ui.shieldOverlay.classList.remove('active');
+        this.ui.shieldOverlay.style.width = '0%';
+        this.ui.shieldMult.classList.remove('active');
+      }
     }
 
     // 英雄獨立 HP 條
