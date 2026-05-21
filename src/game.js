@@ -20,11 +20,13 @@ import { PERKS, FORBIDDEN_PERKS, rollPerkChoices, getXpForLevel } from './perks.
 import { PerkUI } from './perkUI.js';
 import { Meta, META_NODES, getSlotSummary, SLOT_COUNT } from './meta.js';
 import { Tutorial } from './tutorial.js';
+import { BotInput, botThink, installBotHooks, wrapTickForBot } from './bot.js';
 
 export class Game {
-  constructor(renderer, loadSlotN = null) {
+  constructor(renderer, loadSlotN = null, options = {}) {
     this.renderer = renderer;
     this._loadSlotN = loadSlotN;
+    this._botCfg = options.bot || null;
 
     const built = buildScene();
     this.scene = built.scene;
@@ -49,12 +51,23 @@ export class Game {
       volatileLoop: false,       // W6: Volatile Loop flag
     };
 
-    this.input = new Input();
+    const realInput = new Input();
+    if (this._botCfg) {
+      this._botInput = new BotInput(realInput);
+      this.input = this._botInput;
+    } else {
+      this.input = realInput;
+    }
     this.audio = new AudioMgr();
     this.meta = new Meta();
     // 若 boot menu 指定 slot，先 load 進來，之後的 starting bonuses 用 slot 內容
     if (this._loadSlotN) this.meta.loadFromSlot(this._loadSlotN);
+    // Bot 模式：強制非第一局以解鎖 slinger/splitter/boss
+    // 若 ?easy=1 則保留第一局保護（+HP / 慢 spawn）但仍強制 boss 出生
+    if (this._botCfg && !this._botCfg.easy) this.meta.runs = 1;
     this.isFirstRun = (this.meta.runs === 0);
+    // bot easy 模式專用 flag：仍視為 firstRun 但 boss 允許 spawn
+    this._botForceBoss = !!(this._botCfg && this._botCfg.easy);
     this.tutorial = new Tutorial(this.isFirstRun);
 
     this.hero = new Hero(this.scene, this.perks);
@@ -89,6 +102,35 @@ export class Game {
     for (const id of this.meta.forbiddenActive) {
       const fp = FORBIDDEN_PERKS[id];
       if (fp && fp.applyStart) fp.applyStart(this, CONFIG);
+    }
+
+    // 回鍋玩家補貼（非第一局）：開局自動套用 1 個防守型 perk
+    // 平衡測試 2026-05-21：非第一局裸跑 90% 死於 26-50s（中位 32.6s），
+    // 第一個 perk 還沒升到就被秒。送 1 個 perk 避免「回鍋就死」挫敗感
+    if (!this.isFirstRun && !this._botCfg) {
+      const defensives = ['aegis_charge', 'crystallize', 'bloom', 'swift_step'];
+      const pick = defensives[Math.floor(Math.random() * defensives.length)];
+      const p = PERKS[pick];
+      if (p) {
+        p.apply(this);
+        this.perks.taken.push(pick);
+        this.perkUI.renderActiveList(this.perks.taken, PERKS);
+      }
+    }
+
+    // Bot 模式：bonusPerks=N → 自動套 N 個防守型 perk（模擬已升等玩家）
+    if (this._botCfg && this._botCfg.bonusPerks > 0) {
+      const order = ['aegis_charge', 'crystallize', 'bloom', 'swift_step', 'crystallize',
+                     'aegis_charge', 'crystallize', 'bloom', 'crit_frenzy', 'aegis_charge',
+                     'crystallize', 'swift_step', 'echo_pulse', 'aegis_charge', 'crystallize'];
+      for (let i = 0; i < this._botCfg.bonusPerks && i < order.length; i++) {
+        const p = PERKS[order[i]];
+        if (!p) continue;
+        if (!p.stackable && this.perks.taken.includes(order[i])) continue;
+        p.apply(this);
+        this.perks.taken.push(order[i]);
+      }
+      this.perkUI.renderActiveList(this.perks.taken, PERKS);
     }
 
     // 第一局保護
@@ -193,6 +235,12 @@ export class Game {
     if (this.isFirstRun) {
       setTimeout(() => this.tutorial.trigger('start'), 800);
     }
+
+    // === Bot 模式 hooks（必須在 _tick bind 之後）===
+    if (this._botCfg) {
+      installBotHooks(this, this._botCfg);
+      wrapTickForBot(this, this._botCfg);
+    }
   }
 
   _allSwarms() { return this._allSwarmsArr; }
@@ -217,6 +265,9 @@ export class Game {
     const rawDtSec = Math.min((now - this.lastTime) / 1000, 1 / 30);
     this.lastTime = now;
     this.input.beginFrame();
+
+    // Bot 模式：先讓 AI 決定本幀的移動 / dash 訊號
+    if (this._botInput) botThink(this, rawDtSec);
 
     if (!this.audioStarted && this.input.justPressed.size > 0) {
       this.audio.ensureInit();
@@ -679,8 +730,8 @@ export class Game {
       }
     }
 
-    // Boss（第一局關閉）
-    if (!this.isFirstRun && !this.bossSpawned && !this.boss.alive[0]) {
+    // Boss（第一局關閉；bot easy 模式強制允許）
+    if ((!this.isFirstRun || this._botForceBoss) && !this.bossSpawned && !this.boss.alive[0]) {
       if (!this.bossWarningShown && this.elapsed >= CONFIG.bossSpawnTime - CONFIG.bossWarningLead) {
         this.bossWarningShown = true;
         this.tutorial.trigger('bossWarning');
@@ -696,7 +747,7 @@ export class Game {
     }
 
     // W4 Nexus（第一局關閉 + Ohm 已死才生 — 不雙 boss）
-    if (!this.isFirstRun && !this.nexusSpawned && !this.nexus.alive[0] && !this.boss.alive[0]) {
+    if ((!this.isFirstRun || this._botForceBoss) && !this.nexusSpawned && !this.nexus.alive[0] && !this.boss.alive[0]) {
       if (!this.nexusWarningShown && this.elapsed >= CONFIG.nexusSpawnTime - CONFIG.nexusWarningLead) {
         this.nexusWarningShown = true;
         this.tutorial.showCustom('⚠ NEXUS 接近中...將強制隔絕你與水晶', 11);
@@ -714,29 +765,32 @@ export class Game {
     }
 
     // W5: 無盡熵增 — 雙 boss 同場生成
+    // 修：原本 _lastDeadAt=-999 sentinel 會讓尚未登場的 Chronos / Mu 一進 endless 就被秒生 →
+    // 玩家殺完 Nexus 立刻被 4 boss 同框轟死。改為「只有曾經死過才在 endless 模式 respawn」。
+    // 還沒首登場的 boss 走下方 normal-mode 區塊的 spawn time 自然出生。
     if (this.endlessMode) {
       const respawnDelay = CONFIG.endlessBossRespawnDelay;
-      if (!this.boss.alive[0] && this.elapsed - this._bossLastDeadAt > respawnDelay) {
+      if (this._bossLastDeadAt > 0 && !this.boss.alive[0] && this.elapsed - this._bossLastDeadAt > respawnDelay) {
         this.boss.spawn(this.crystal);
         this.effects.addTrauma(0.5);
         this.audio.playTetherSnap();
         if (this.audio.ambient) this.audio.ambient.bossDrop();
       }
-      if (!this.nexus.alive[0] && this.elapsed - this._nexusLastDeadAt > respawnDelay) {
+      if (this._nexusLastDeadAt > 0 && !this.nexus.alive[0] && this.elapsed - this._nexusLastDeadAt > respawnDelay) {
         this.nexus.spawn(this.crystal);
         this.effects.addTrauma(0.6);
         this.audio.playTetherSnap();
         if (this.audio.ambient) this.audio.ambient.bossDrop();
       }
-      // W6: Chronos 在 endless 也會循環
-      if (!this.chronos.alive[0] && this.elapsed - this._chronosLastDeadAt > respawnDelay + 10) {
+      // W6: Chronos 在 endless 也會循環（曾死過才 respawn；未登場仍由 normal-mode 區塊負責）
+      if (this._chronosLastDeadAt > 0 && !this.chronos.alive[0] && this.elapsed - this._chronosLastDeadAt > respawnDelay + 10) {
         this.chronos.spawn(this.crystal);
         this.effects.addTrauma(0.7);
         this.audio.playTetherSnap();
         if (this.audio.ambient) this.audio.ambient.bossDrop();
       }
-      // W7: Mu 在 endless 也循環（90 秒間隔，留給玩家堆積資源）
-      if (!this.mu.alive[0] && this.elapsed - this._muLastDeadAt > 90 && !this._perksBackup) {
+      // W7: Mu 在 endless 也循環（90 秒間隔；同樣只在 Mu 曾死過後重生）
+      if (this._muLastDeadAt > 0 && !this.mu.alive[0] && this.elapsed - this._muLastDeadAt > 90 && !this._perksBackup) {
         this._muSnapshotPerks();
         this.mu.spawn(this.crystal);
         this.effects.addTrauma(1.0);
@@ -748,7 +802,8 @@ export class Game {
     }
 
     // W7 Mu 正常模式：t=900s 首次召喚（終局考驗）
-    if (!this.isFirstRun && !this.endlessMode && !this.muSpawned && !this.mu.alive[0]) {
+    // 不再排除 endlessMode — 玩家如果在 Mu 出生前進 endless（殺 Nexus），Mu 仍按時程登場
+    if ((!this.isFirstRun || this._botForceBoss) && !this.muSpawned && !this.mu.alive[0]) {
       if (!this.muWarningShown && this.elapsed >= CONFIG.muSpawnTime - CONFIG.muWarningLead) {
         this.muWarningShown = true;
         this.tutorial.showCustom('☢ MU 接近中... PERKS 將被解構，tether 穿心是唯一解 ☢', 14);
@@ -766,8 +821,9 @@ export class Game {
       }
     }
 
-    // W6 Chronos 正常模式：t=540s 首次召喚（無盡模式由上面 endless 區塊處理）
-    if (!this.isFirstRun && !this.endlessMode && !this.chronosSpawned && !this.chronos.alive[0]) {
+    // W6 Chronos 正常模式：t=540s 首次召喚
+    // 不再排除 endlessMode — Chronos 未登場前 endless 也走這個 normal spawn time
+    if ((!this.isFirstRun || this._botForceBoss) && !this.chronosSpawned && !this.chronos.alive[0]) {
       if (!this.chronosWarningShown && this.elapsed >= CONFIG.chronosSpawnTime - CONFIG.chronosWarningLead) {
         this.chronosWarningShown = true;
         this.tutorial.showCustom('⚠ CHRONOS 接近中... 將全面加速怪潮', 11);
@@ -946,7 +1002,8 @@ export class Game {
     this.paused = true;
     this.tutorial.trigger('levelup');
     // Gemini Onboarding：第一局時把 isFirstRun 傳給 rollPerkChoices，加權防守型 perk
-    const choices = rollPerkChoices(this._uniqueTakenIds(), 3, this.isFirstRun);
+    // 傳完整 taken 列表（含重複），讓 rollPerkChoices 能正確算 stackable perk 的 maxStacks
+    const choices = rollPerkChoices(this.perks.taken, 3, this.isFirstRun);
     // W6 Soul Imprint: 第一次升級保證烙印的天賦出現在三選一中
     // B21: 用「還沒拿過任何 perk」判定首升，避免一次升 2+ 級時誤判
     if (this.perks.taken.length === 0 && this.meta.imprintUnlocked && this.meta.imprinted) {

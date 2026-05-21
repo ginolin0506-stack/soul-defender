@@ -1,6 +1,14 @@
 import * as THREE from 'three';
 import { Game } from './game.js';
 import { hasAnySlot, getSlotSummary, SLOT_COUNT } from './meta.js';
+import { parseBotCfg } from './bot.js';
+
+// === Bot 模式：?bot=1 自動跑 + 自動 AI；?headless=1 把 RAF 換成最快的 setTimeout ===
+const botCfg = parseBotCfg(location.search);
+if (botCfg && botCfg.headless) {
+  // headless 模式下強制最快速 RAF，puppeteer 才能跑出有意義的速度
+  window.requestAnimationFrame = (cb) => setTimeout(() => cb(performance.now()), 0);
+}
 
 // === 每次開啟自動清掉「自動存檔」，但保留「手動 slot」===
 const RESET_ON_LOAD = true;
@@ -11,6 +19,15 @@ if (RESET_ON_LOAD) {
     localStorage.removeItem('soulDefender_v4_bak');     // 新版備份
     localStorage.removeItem('soulDefender_mute');       // mute 偏好
     // 不清：soulDefender_slot_1/2/3 + 對應 _bak（手動存檔，玩家自己控制）
+  } catch (e) {}
+}
+if (botCfg) {
+  // bot 模式：把全部存檔清空，每次都是新局
+  try {
+    for (let n = 1; n <= SLOT_COUNT; n++) {
+      localStorage.removeItem(`soulDefender_slot_${n}`);
+      localStorage.removeItem(`soulDefender_slot_${n}_bak`);
+    }
   } catch (e) {}
 }
 
@@ -29,7 +46,7 @@ renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
 function startGame(loadSlotN = null) {
-  const game = new Game(renderer, loadSlotN);
+  const game = new Game(renderer, loadSlotN, { bot: botCfg });
   game.start();
   window.addEventListener('resize', () => game.onResize(window.innerWidth, window.innerHeight));
   window.__game = game;
@@ -107,7 +124,10 @@ function showBootMenu() {
   }
 }
 
-if (hasAnySlot()) {
+if (botCfg) {
+  // bot 模式跳過 boot menu，直接開新局
+  startGame(null);
+} else if (hasAnySlot()) {
   showBootMenu();
 } else {
   startGame(null);

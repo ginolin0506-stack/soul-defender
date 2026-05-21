@@ -28,11 +28,12 @@ export const PERKS = {
     id: 'aegis_charge',
     name: 'Aegis Charge',
     nameCn: '靈光護甲',
-    desc: '每 6 個靈魂回流，水晶獲得護盾（可疊層數，每層 +35 盾）',
+    desc: '每 6 個靈魂回流，水晶獲得護盾（每層 +35 盾，最多 5 層）',
     rarity: 'rare',
     icon: '🛡️',
     weight: 0.75,
     stackable: true,
+    maxStacks: 5,           // 平衡測試 2026-05-21：原本無限疊讓後期 build 同質化，全部都是 aegis 牆
     apply(g) { g.perks.aegisStacks += 1; }
   },
   echo_pulse: {
@@ -229,6 +230,11 @@ export function rollPerkChoices(takenIds, count = 3, isFirstRun = false) {
   for (const id of ALL_IDS) {
     const p = PERKS[id];
     if (!p.stackable && takenIds.includes(id)) continue;
+    // maxStacks: 已疊到上限的可堆 perk 不再出現在卡池
+    if (p.stackable && p.maxStacks) {
+      const stacks = takenIds.reduce((n, t) => n + (t === id ? 1 : 0), 0);
+      if (stacks >= p.maxStacks) continue;
+    }
     pool.push(p);
   }
   if (pool.length === 0) return [];

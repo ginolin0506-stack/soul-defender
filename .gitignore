@@ -4,3 +4,7 @@ Thumbs.db
 .vscode/
 .idea/
 *.swp
+
+# balance sim
+tools/node_modules/
+tools/sim-output/

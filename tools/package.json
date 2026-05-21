@@ -1,0 +1,13 @@
+{
+  "name": "soul-defender-tools",
+  "version": "1.0.0",
+  "description": "Balance simulation harness — driver only, does not affect the game itself.",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "sim": "node balance-sim.mjs"
+  },
+  "dependencies": {
+    "puppeteer": "^23.0.0"
+  }
+}

@@ -90,14 +90,16 @@ export const CONFIG = {
   // === Boss Ohm ===
   bossSpawnTime: 180,
   bossWarningLead: 10,
-  bossHp: 2200,
+  // Bot 平衡測試 2026-05-21：滿配 build 平均 13.7s 解掉 Ohm，缺乏威嚇感
+  // HP 2200 → 2800 (+27%)、震波 5.0s → 4.0s（更頻繁壓力）
+  bossHp: 2800,
   bossRadius: 1.9,
   bossOrbitRadius: 13,
   bossSeverRadius: 2.0,
   bossOrbitSpeedP0: 0.12,
   bossOrbitSpeedP1: 0.26,
   bossOrbitSpeedP2: 0.45,
-  bossShockwaveInterval: 5.0,
+  bossShockwaveInterval: 4.0,
   bossShockwaveSpeed: 13,
   bossShockwaveMaxRadius: 16,
   bossShockwaveDamage: 55,
@@ -111,11 +113,14 @@ export const CONFIG = {
   nexusRadius: 2.2,
   nexusFieldRadius: 16,           // 斥力場半徑（外緣到水晶距離）
   nexusPushStrength: 22,          // 推力強度
-  nexusPillarRing: 18,            // pillars 環繞水晶半徑
-  nexusPillarHp: 250,
-  nexusPillarRadius: 2.5,         // 玩家進入這個半徑才會燒柱
+  nexusPillarRing: 18,            // pillars 環繞水晶半徑（保留：在斥力場外、玩家被推出後容易到達）
+  // 平衡測試 2026-05-21：玩家原本 100% 純磨本體 250s 都不去燒柱（5% 減傷不夠痛）
+  // pillarHp 250→150 + pillarRadius 2.5→4：玩家路過 4 單位內就燒，2.5s/柱 → 7.5s 燒完全部
+  // 鼓勵玩家短暫離開水晶燒柱再回防，而不是死磨本體
+  nexusPillarHp: 150,
+  nexusPillarRadius: 4,           // 玩家進入這個半徑才會燒柱
   nexusPillarBurnRate: 60,        // HP/sec
-  nexusPillarDamageReduction: 0.05, // pillars 全活時 Nexus 本體吃 5% 傷害
+  nexusPillarDamageReduction: 0.03, // pillars 全活時 Nexus 本體吃 3% 傷害（原 0.05 → 0.03，硬磨變更慢）
   nexusXp: 120,
   nexusKillSouls: 35,
 
