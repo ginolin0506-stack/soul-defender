@@ -21,6 +21,7 @@ export class Hero {
     const body = new THREE.Mesh(bodyGeo, bodyMat);
     body.castShadow = true;
     group.add(body);
+    this._bodyMat = bodyMat;
 
     const tipGeo = new THREE.ConeGeometry(0.25, 0.5, 6);
     const tipMat = new THREE.MeshStandardMaterial({
@@ -92,6 +93,13 @@ export class Hero {
     this.invulnerable = false;
     this.dashJustEnded = false;
     this.dashJustTriggered = false;
+
+    // === 英雄獨立血量（2026-05-21）===
+    this.maxHp = CONFIG.heroMaxHp;
+    this.hp = this.maxHp;
+    this.damageIframeTimer = 0;       // 受傷後共用無敵秒數（觸怪 / 光束都會設）
+    this.healBlockTimer = 0;          // boss 壓繫帶後 N 秒鎖回血
+    this.hitFlash = 0;                // 視覺：受傷時 body 短閃
 
     // W4: Mass Collapse 用
     this.stationaryTime = 0;
@@ -202,6 +210,38 @@ export class Hero {
     // 腳光環呼吸
     const breathe = 0.5 + Math.sin(performance.now() * 0.005) * 0.15;
     this._ring.material.opacity = breathe;
+
+    // === 受傷無敵 / 鎖回血 / 受傷視覺衰減 ===
+    if (this.damageIframeTimer > 0) this.damageIframeTimer = Math.max(0, this.damageIframeTimer - dt);
+    if (this.healBlockTimer > 0) this.healBlockTimer = Math.max(0, this.healBlockTimer - dt);
+    if (this.hitFlash > 0) this.hitFlash = Math.max(0, this.hitFlash - dt * 3.0);
+    // hit flash → 紅閃 emissive
+    if (this._bodyMat) {
+      const f = this.hitFlash;
+      this._bodyMat.emissiveIntensity = 0.7 + f * 6;
+      this._bodyMat.emissive.setRGB(0.0 + f * 5, 0.27 - f * 0.27, 0.40 - f * 0.40);
+    }
+  }
+
+  /** 受到傷害；回傳是否「這次造成死亡」（HP 從 >0 變 ≤0）。dash 中無敵 + iframe 期間吸收 */
+  takeDamage(amount) {
+    if (this.hp <= 0) return false;
+    if (this.invulnerable) return false;
+    if (this.damageIframeTimer > 0) return false;
+    this.hp -= amount;
+    this.damageIframeTimer = CONFIG.heroTouchIframe;
+    this.hitFlash = 0.35;
+    if (this.hp <= 0) {
+      this.hp = 0;
+      return true;
+    }
+    return false;
+  }
+
+  /** 治療（會 clamp 到 maxHp） */
+  heal(amount) {
+    if (this.hp <= 0) return;
+    this.hp = Math.min(this.maxHp, this.hp + amount);
   }
 
   /**

@@ -201,6 +201,8 @@ export class Game {
       runCount: document.getElementById('run-count'),
       techGrid: document.getElementById('tech-tree-grid'),
       xpBar: document.getElementById('xp-bar'),
+      heroHpBar: document.getElementById('hero-hp'),
+      heroHpText: document.getElementById('hero-hp-text'),
       level: document.getElementById('level'),
       bossHpWrap: document.getElementById('boss-hp-wrap'),
       bossHpBar: document.getElementById('boss-hp'),
@@ -366,7 +368,8 @@ export class Game {
     }
 
     // === Tether sever (Boss 切繫帶 + W6 Volatile Loop 自斷) ===
-    let severed = this.boss.isOnTether(this.hero, this.crystal);
+    const bossOnTether = this.boss.isOnTether(this.hero, this.crystal);
+    let severed = bossOnTether;
     // W6 Volatile Loop: 每 10s 自發失控
     if (this.perks.volatileLoop) {
       this._volatileLoopTimer -= rawDtSec;
@@ -382,7 +385,29 @@ export class Game {
     this.tether.severed = severed;
     if (severed) this.effects.addChroma(0.003);
 
+    // === 2026-05-21：boss 壓繫帶 → 水晶 DPS + hero 鎖回血 3s ===
+    if (bossOnTether) {
+      let dmg = CONFIG.bossOnTetherCrystalDps * rawDtSec * this.tether.crystalVulnMult;
+      if (this.perks.massCollapse && this.hero.gravityWellActive) {
+        dmg *= (1 - CONFIG.massCollapseCrystalDmgReduction);
+      }
+      if (this.perks.shieldHp > 0) {
+        const absorbed = Math.min(this.perks.shieldHp, dmg);
+        this.perks.shieldHp -= absorbed;
+        dmg -= absorbed;
+      }
+      if (dmg > 0) this.crystal.takeDamage(dmg);
+      this.crystal.hitFlash = Math.max(this.crystal.hitFlash, 0.18);
+      this.hero.healBlockTimer = Math.max(this.hero.healBlockTimer, CONFIG.heroHealBlockOnBossTether);
+    }
+
     this.tether.update(dt);
+
+    // === 繫帶慢回血（2026-05-21）===
+    // 條件：繫帶未斷 + 未被 boss 鎖血 + hero 未死
+    if (!this.tether.severed && this.hero.healBlockTimer <= 0 && this.hero.hp > 0 && this.hero.hp < this.hero.maxHp) {
+      this.hero.heal(CONFIG.heroTetherHealRate * rawDtSec);
+    }
 
     // === Hashes ===
     this.swarm.fillHash(this.hash);
@@ -399,8 +424,31 @@ export class Game {
     if (this.perks.massCollapse && this.hero.gravityWellActive) {
       this._applyGravityWell();
     }
-    const bossCrystalShockHit = this.boss.update(enemyDt, this.hero, this.crystal);
+    this.boss.update(enemyDt, this.hero, this.crystal);
     this.boss.fillHash();
+    // Boss 光束打中 hero
+    if (this.boss.consumeBeamHit()) {
+      this.hero.takeDamage(CONFIG.heroBeamDamage);
+      this.effects.addTrauma(0.10);
+      this.effects.addChroma(0.018);
+      this.audio.playTake();
+    }
+    // Boss 自爆：對水晶造成大量傷害，hero 若在範圍內吃一半
+    if (this.boss.consumeSelfDestruct()) {
+      const sdDmg = CONFIG.bossSelfDestructDamage * this.tether.crystalVulnMult;
+      this._damageCrystal(sdDmg);
+      this.effects.addTrauma(1.5);
+      this.effects.addChroma(0.08);
+      this.audio.playTetherSnap();
+      const bx = this.boss.position.x, bz = this.boss.position.z;
+      this.hero.spawnPulseRing(bx, bz, CONFIG.bossSelfDestructRadius * 2.4, 0xff4422, 1.0);
+      const ddx = this.hero.position.x - bx, ddz = this.hero.position.z - bz;
+      if (Math.hypot(ddx, ddz) < CONFIG.bossSelfDestructRadius) {
+        this.hero.takeDamage(CONFIG.heroBeamDamage);
+      }
+      // 沿用既有 boss kill 流程：給 souls / XP / 標記 dead 時間
+      this._onKill(this.boss, bx, bz);
+    }
     this.nexus.update(enemyDt, this.hero, this.crystal);
     this.nexus.fillHash();
     // W6 Chronos
@@ -438,8 +486,13 @@ export class Game {
         this.audio.playTake();
         for (const i of miteHits) this.mites.consumeAt(i);
         this.tutorial.trigger('splitter');
+        // 2026-05-21 新血量系統：mites 撞 hero 也扣血（iframe 期間自動吸收）
+        this.hero.takeDamage(CONFIG.heroTouchDamage);
       }
     }
+
+    // === 觸怪扣血（leech / slinger / splitter / bosses）===
+    this._processHeroTouchDamage();
 
     // === 英雄脈衝（所有 swarm + W4 perks 參數）===
     const swarms = this._allSwarms();
@@ -536,25 +589,6 @@ export class Game {
       this.audio.playCrystalHit();
     }
 
-    // === Boss 衝擊波 → 水晶 ===
-    if (bossCrystalShockHit) {
-      this._damageCrystal(CONFIG.bossShockwaveDamage * this.tether.crystalVulnMult);
-      this.effects.addTrauma(0.35);
-      this.effects.addChroma(0.025);
-      this.audio.playCrystalHit();
-    }
-
-    // === W7+ Ohm Overload Resonance：把儲存的傷害沿 tether 打到水晶 ===
-    if (this.boss.overloadDischargeDmg > 0) {
-      const dmg = this.boss.overloadDischargeDmg * this.tether.crystalVulnMult;
-      this.boss.overloadDischargeDmg = 0;
-      // bypass shield：閃電沿 tether 內部直擊水晶核心，aegis 盾無法吸收（設計意圖：強迫玩家暫停輸出）
-      this._damageCrystal(dmg, CONFIG.bossOverloadBypassShield);
-      this.effects.addTrauma(0.4);
-      this.effects.addChroma(0.03);
-      this.audio.playTetherSnap();
-    }
-
     // === Splitter 死亡 → spawn mites（B3: 移到所有死亡來源之後、syncInstances 之前） ===
     const deathPositions = this.splitters.consumeDeathQueue();
     for (const p of deathPositions) {
@@ -644,19 +678,22 @@ export class Game {
     this._updateHUD();
 
     // === 死亡判定（含第一局庇護 — 原子操作，同幀完成所有狀態切換） ===
-    if (this.crystal.hp <= 0 && this.perks.shieldHp <= 0 && !this.gameOver) {
-      if (this.isFirstRun && !this.usedFirstRunSave) {
-        // R1+R2 修正：原子化 + 視覺強化
+    const crystalDead = this.crystal.hp <= 0 && this.perks.shieldHp <= 0;
+    const heroDead = this.hero.hp <= 0;
+    if ((crystalDead || heroDead) && !this.gameOver) {
+      if (crystalDead && this.isFirstRun && !this.usedFirstRunSave) {
+        // R1+R2 修正：原子化 + 視覺強化（第一局庇護僅適用水晶死亡，hero 死亡直接結束）
         this.usedFirstRunSave = true;
         this.crystal.hp = 250;
-        this.crystal.hitFlash = 2.0;       // 強閃白
-        this.effects.triggerHitStop(0.18);  // 強行 hit-stop 給玩家視覺凝固感
-        this.effects.addTrauma(0.9);        // 0.5 → 0.9
-        this.effects.addChroma(0.06);       // 0.03 → 0.06
+        this.hero.hp = this.hero.maxHp;     // 一併補滿英雄 HP，確保庇護後可繼續遊玩
+        this.crystal.hitFlash = 2.0;
+        this.effects.triggerHitStop(0.18);
+        this.effects.addTrauma(0.9);
+        this.effects.addChroma(0.06);
         this.tutorial.trigger('save');
         this.audio.playLevelUp();
-        this.audio.playTetherSnap();        // 額外的「震波」音效
-        this._triggerShieldNova();          // 推開 25u 內所有怪 + 清場
+        this.audio.playTetherSnap();
+        this._triggerShieldNova();
       } else {
         this._endGame();
       }
@@ -1000,6 +1037,45 @@ export class Game {
     }
   }
 
+  /** 2026-05-21 新血量系統：每幀檢查 hero 與「非 mite」敵人 / boss 觸碰，iframe 期間吸收 */
+  _processHeroTouchDamage() {
+    if (this.hero.hp <= 0) return;
+    if (this.hero.invulnerable) return;
+    if (this.hero.damageIframeTimer > 0) return;
+    const hx = this.hero.position.x, hz = this.hero.position.z;
+    const heroR = CONFIG.heroRadius;
+    // [pool, enemyRadius, hash]
+    const slingerR = 0.6;
+    const pools = [
+      [this.swarm, CONFIG.leechRadius, this.hash],
+      [this.slingers, slingerR, this.slingers.hash],
+      [this.splitters, CONFIG.splitterRadius, this.splitters.hash],
+      [this.boss, CONFIG.bossRadius, this.boss.hash],
+      [this.nexus, CONFIG.nexusRadius, this.nexus.hash],
+      [this.chronos, CONFIG.chronosRadius, this.chronos.hash],
+      [this.mu, CONFIG.muRadius, this.mu.hash],
+    ];
+    for (const [pool, eR, hash] of pools) {
+      const touchR = heroR + eR;
+      const touchR2 = touchR * touchR;
+      const ids = hash.queryXZ(hx, hz, touchR);
+      for (const i of ids) {
+        if (!pool.alive[i]) continue;
+        const dx = pool.pos[i*3+0] - hx;
+        const dz = pool.pos[i*3+2] - hz;
+        if (dx*dx + dz*dz < touchR2) {
+          if (this.hero.takeDamage(CONFIG.heroTouchDamage)) {
+            // 死亡：交給 _tickInner 末端的死亡判定處理
+          }
+          this.effects.addTrauma(0.07);
+          this.effects.addChroma(0.012);
+          this.audio.playTake();
+          return; // iframe 已啟動，本幀不再檢查
+        }
+      }
+    }
+  }
+
   /** W5 動能逆轉：環內敵人朝水晶外推 + 立即傷害 50 */
   _triggerKineticReversal() {
     const hx = this.hero.position.x, hz = this.hero.position.z;
@@ -1136,6 +1212,17 @@ export class Game {
     if (this.ui.shieldBar) {
       const shieldPct = Math.min(1, this.perks.shieldHp / this.crystal.maxHp);
       this.ui.shieldBar.style.width = shieldPct > 0 ? (shieldPct * 100).toFixed(1) + '%' : '0';
+    }
+
+    // 英雄獨立 HP 條
+    if (this.ui.heroHpBar) {
+      const heroPct = Math.max(0, this.hero.hp / this.hero.maxHp);
+      this.ui.heroHpBar.style.width = (heroPct * 100).toFixed(1) + '%';
+      this.ui.heroHpBar.classList.toggle('low', heroPct < 0.3);
+      this.ui.heroHpBar.classList.toggle('blocked', this.hero.healBlockTimer > 0);
+    }
+    if (this.ui.heroHpText) {
+      this.ui.heroHpText.textContent = `${Math.ceil(this.hero.hp)} / ${this.hero.maxHp}`;
     }
 
     // W5 Entropy

@@ -17,6 +17,14 @@ export const CONFIG = {
   // === 英雄 ===
   heroSpeed: 9.5,
   heroRadius: 0.55,
+  // 英雄獨立血量系統（2026-05-21 設計重做）
+  // 玩家觸怪會扣血，繫帶連著時慢回；hero HP → 0 = Game Over（與水晶 HP 並列死亡條件）
+  heroMaxHp: 100,
+  heroTouchDamage: 12,              // 觸怪一次扣的血量（leech / splitter / mite 共用）
+  heroTouchIframe: 0.6,             // 觸怪後無敵時間，避免擠進怪堆秒死
+  heroTetherHealRate: 4.0,          // HP / 秒；繫帶未斷且未被 boss 鎖回血時生效
+  heroHealBlockOnBossTether: 3.0,   // boss 壓繫帶後鎖回血秒數
+  heroBeamDamage: 18,               // boss 光束打中 hero 一次的傷害
   heroPulseInterval: 0.85,
   heroPulseRadius: 4.0,            // base radius（站樁懲罰已由 tetherInnerPenalty 處理）
   // 玩家反饋（2026-05-20 再次）：開局攻擊範圍太小 → 前 30 秒 ease-in bonus
@@ -87,38 +95,44 @@ export const CONFIG = {
   mitesXp: 1,
   mitesPushForce: 1.4,         // 撞到英雄推幾單位（朝水晶方向）
 
-  // === Boss Ohm ===
-  // Gemini 2026-05-21 Level-Gated Timeline：原本「絕對時間 180s」改為「等級 ≥ 15 才觸發倒數」
-  // 解決前期運氣差被秒、發育快又無聊等待的雙峰問題；bossSpawnTime 保留作為 fallback（沒升到 LV 也會出）
+  // === Boss Ohm（2026-05-21 完全重設計：光束 + 順移切繫帶 + 自爆狂暴）===
   bossSpawnLevel: 15,
-  bossWarningLead: 15,           // Gemini：15 秒倒數警告
-  bossSpawnTime: 180,            // fallback：絕對時間上限（沒升到 LV15 也會出）
-  // Bot 平衡測試 2026-05-21：滿配 build 平均 13.7s 解掉 Ohm，缺乏威嚇感
-  // HP 2200 → 2800 (+27%)、震波 5.0s → 4.0s（更頻繁壓力）
+  bossWarningLead: 15,
+  bossSpawnTime: 180,                  // fallback
   bossHp: 2800,
   bossRadius: 1.9,
   bossOrbitRadius: 13,
-  bossSeverRadius: 2.0,
-  bossOrbitSpeedP0: 0.12,
-  bossOrbitSpeedP1: 0.26,
-  bossOrbitSpeedP2: 0.45,
-  bossShockwaveInterval: 4.0,
-  bossShockwaveSpeed: 13,
-  bossShockwaveMaxRadius: 16,
-  bossShockwaveDamage: 55,
+  bossSeverRadius: 2.0,                // boss 到「hero-crystal 線段」垂直距離 < 此值 = 壓繫帶
+  bossOrbitSpeedP0: 0.18,              // 三階段都繞圈（P2 改為衝刺），保留 P0/P1 軌道速度
+  bossOrbitSpeedP1: 0.30,
   bossXp: 80,
   bossKillSouls: 25,
-  // 平衡 2026-05-21 Counter-build：Ohm Phase 3 Overload Resonance
-  // 進入 phase 2（< 35% HP，閾值原 0.25 提前）時，把吃到的 pulse 傷害 50% 儲存
-  // 每 2 秒沿 tether 把儲存值化為「連鎖閃電」打水晶 → 強迫高頻 build 暫停輸出
-  bossPhase2HpRatio: 0.35,
-  // P2 進入後：傷害「分流」— storePct 的比例變成 charge meter，其餘 (1-storePct) 才扣 HP
-  // 等於 P2 時 Ohm 取得「軟性免傷」+「鏡像回打水晶」，延長戰鬥讓 discharge 有時間發
-  // 之前是純疊加（不削 HP），導致 Ohm 在 4s 內死光，discharge 還沒 fire 過
-  bossOverloadStorePct: 0.6,
-  bossOverloadDischargeInterval: 1.5,  // 縮短間隔，P2 期間 fire 2-3 次
-  bossOverloadDischargeMult: 1.0,
-  bossOverloadBypassShield: true,      // discharge 沿 tether 直接打水晶，繞過 aegis 盾
+
+  // P0/P1/P2 HP 閾值（新）
+  bossPhase1HpRatio: 0.50,             // < 50% 進入 P1（加上順移）
+  bossBerserkHpRatio: 0.20,            // < 20% 進入狂暴（自爆衝刺）
+
+  // 壓繫帶懲罰（所有階段共用）
+  bossOnTetherCrystalDps: 35,          // boss 在繫帶上時對水晶的 DPS
+  // heroHealBlockOnBossTether 已在 hero 區塊（共用）
+
+  // P0+ 光束
+  bossBeamInterval: 1.0,               // 每 1 秒一發
+  bossBeamTelegraph: 0.4,              // 紅色預警時間
+  bossBeamActive: 0.18,                // 主光束持續時間
+  bossBeamWidth: 0.7,                  // 主光束半寬度
+  bossBeamMaxRange: 35,
+  // bossBeamDamage 用 heroBeamDamage（hero 區塊）
+
+  // P1+ 順移
+  bossTeleportInterval: 3.0,
+  bossTeleportAnimDuration: 1.0,       // 動畫時長，期間 boss 位置 = 原位（可被閃避）
+  bossTeleportBehindDistance: 4.0,     // 順移到 hero 後方距離（hero-from-crystal 延長線上）
+
+  // P2 狂暴自爆
+  bossBerserkSpeedMult: 0.5,           // × heroSpeed = 4.75 u/s
+  bossSelfDestructDamage: 500,         // 撞到水晶造成的傷害（水晶上限 1000 → 一次掉一半）
+  bossSelfDestructRadius: 2.5,         // hero 在此範圍內也吃殘餘衝擊波（× 0.5 傷害）
 
   // === Boss Nexus (W4) ===
   nexusSpawnLevel: 40,           // Gemini Level-Gated：LV40 觸發倒數

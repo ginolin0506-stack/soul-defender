@@ -12,14 +12,14 @@ export class Tutorial {
     this.toastTextEl = document.getElementById('tutorial-text');
 
     this.steps = {
-      start: { text: 'WASD 移動，Space 衝刺。撐住水晶不被打爆即可。', life: 9 },
+      start: { text: 'WASD 移動，Space 衝刺。撞到怪會扣自己血量（繫帶連著時慢回血）；水晶或英雄任一血量歸零都算結束。', life: 11 },
       tether: { text: '英雄離水晶越遠，繫帶倍率越高（傷害 ↑、水晶受傷也 ↑）。看 HUD 的「繫帶」數值。', life: 10 },
       kill: { text: '殺敵會掉靈魂，沿繫帶回流治療水晶。離得近，靈魂回流快。', life: 8 },
       levelup: { text: '升級可選擇 1 個天賦，永久強化本局。傳奇 (橘色) 卡片最強。', life: null },
       slinger: { text: '紅色亮起的是遠程怪 — 子彈會射水晶。衝出去清掉！', life: 9 },
       splitter: { text: '大怪死亡會分裂成 3 隻小蟲，小蟲只追英雄，撞到會把你推回水晶。', life: 10 },
-      bossWarning: { text: '⚠ Ohm 接近中...10 秒後降臨，它能切斷繫帶！', life: 9 },
-      boss: { text: '當 Ohm 切到繫帶 = 倍率歸 1。繞著它打、別讓它擋線。', life: 11 },
+      bossWarning: { text: '⚠ Ohm 接近中…紅色預警光束會打你；50% 血開始順移壓繫帶；20% 血狂暴衝水晶自爆！', life: 9 },
+      boss: { text: 'Ohm 規則：紅光束 0.4s 預警再射（要閃）｜壓繫帶持續傷水晶+鎖你回血 3s｜看到 ghost 1s 內走位避開順移點｜逼到 20% 血會自爆衝水晶。', life: 13 },
       save: { text: '新手庇護啟動！水晶免於崩裂一次。下次就沒這待遇了。', life: 7 },
     };
   }
