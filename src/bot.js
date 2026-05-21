@@ -4,9 +4,8 @@
 // 對外接口：parseBotCfg(), createBotInput(game), installBotHooks(game, cfg)
 
 // === Bot 策略參數 ===
-// 半徑 5.5 默認；裝了 tether_snap 推到 7.5；水晶低血退到 3.8
+// 半徑 5.5 默認；水晶低血退到 3.8（AoE 重整 2026-05-21：Tether Snap 已刪除）
 const DEFEND_RADIUS_BASE = 5.5;
-const DEFEND_RADIUS_TETHER_SNAP = 7.5;  // tether mult ~1.6 才能觸發 Snap
 const DEFEND_RADIUS_LOW_HP = 3.8;
 const LOW_HP_THRESHOLD = 0.30;
 const DASH_DANGER_RADIUS = 2.0;
@@ -16,14 +15,15 @@ const DASH_OFFENSIVE_MIN_TARGETS = 3;   // dash 路徑上至少幾隻怪才衝
 const DASH_OFFENSIVE_RADIUS = 2.5;      // dash 視為「擊中」的擴散半徑
 
 // === Perk 優先序 — 數字越大越優先（生存優先；避開對 bot 行為有副作用的 perk）===
+// AoE 重整 2026-05-21：echo_pulse / tether_snap 已刪除；新增 pierce / fang_lunge
 const PERK_PRIORITY = {
   aegis_charge:        100,  // 堆盾 / 6 靈魂回盾，生存核心
   crystallize:          95,  // +250 HP + 回滿，生存核心
-  bloom:                85,  // 範圍 +25%，清屏
+  bloom:                85,  // 範圍 +15%/層，清屏（已加上限 3 層）
   swift_step:           80,  // 速度 + dash CD
-  echo_pulse:           70,  // 第二段脈衝
-  crit_frenzy:          65,  // 暴擊堆疊
-  tether_snap:          55,  // 配合外推用
+  pierce:               70,  // 單體傷害 +60%，間隔 +0.4s
+  crit_frenzy:          65,  // 暴擊堆疊（已加上限 3 層）
+  fang_lunge:           55,  // Dash 標記 → 下一脈衝 ×3
   kinetic_reversal:     50,  // dash 後擊退 + debuff
   regicide:             45,  // 對 boss 強，前期沒用
   critical_suspension:  35,
@@ -178,7 +178,7 @@ export function botThink(game, dt) {
     if (nearestThreat && nearestThreatDist < DASH_DANGER_RADIUS) wantDash = true;
     // 攻擊性 dash：路徑上有 3+ 隻怪
     if (dashHitCount >= DASH_OFFENSIVE_MIN_TARGETS) wantDash = true;
-    // tether snap 觸發：mult ≥ 1.5
+    // 高張力 tether + 怪潮密集 → 主動 dash 觸發 Kinetic Reversal AoE
     if (game._botDashTimer <= 0 && game.tether.heroDmgMult >= 1.5 && threatN >= 3) wantDash = true;
     if (wantDash) {
       bot.triggerDash();
@@ -206,9 +206,6 @@ export function botThink(game, dt) {
   let targetR;
   if (hpFrac < LOW_HP_THRESHOLD) {
     targetR = DEFEND_RADIUS_LOW_HP;
-  } else if (game.perks.tetherSnap) {
-    // 有 tether_snap → 外推到 mult ≥ 1.5 的距離才能觸發 Snap
-    targetR = DEFEND_RADIUS_TETHER_SNAP;
   } else {
     targetR = DEFEND_RADIUS_BASE;
   }

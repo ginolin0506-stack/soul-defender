@@ -4,15 +4,15 @@ import { CONFIG } from './config.js';
 // 4 個有獨特邏輯（active flag），其餘是純數值加成（stat mod）
 
 export const PERKS = {
-  tether_snap: {
-    id: 'tether_snap',
-    name: 'Tether Snap',
-    nameCn: '斷線重構',
-    desc: 'Dash 結束時若繫帶倍率 ≥ 1.5×，會射出能量割裂英雄到水晶之間所有敵人',
+  fang_lunge: {
+    id: 'fang_lunge',
+    name: 'Fang Lunge',
+    nameCn: '狼牙突刺',
+    desc: 'Dash 直接命中敵人 → 該敵人被「狼牙印記」標記 3 秒，下一次脈衝對它造成 ×3.0 傷害（對小怪沒用，是 boss 殺手）',
     rarity: 'legendary',
-    icon: '⚡',
+    icon: '🗡️',
     weight: 0.45,
-    apply(g) { g.perks.tetherSnap = true; }
+    apply(g) { g.perks.fangLunge = true; }
   },
   lone_wolf: {
     id: 'lone_wolf',
@@ -36,26 +36,27 @@ export const PERKS = {
     maxStacks: 5,           // 平衡測試 2026-05-21：原本無限疊讓後期 build 同質化，全部都是 aegis 牆
     apply(g) { g.perks.aegisStacks += 1; }
   },
-  echo_pulse: {
-    id: 'echo_pulse',
-    name: 'Echo Pulse',
-    nameCn: '迴音脈衝',
-    desc: '脈衝命中後 0.32 秒於原地再炸一次（50% 傷害）',
+  pierce: {
+    id: 'pierce',
+    name: 'Pierce',
+    nameCn: '穿刺',
+    desc: '脈衝傷害 +60%，但脈衝間隔 +0.4 秒（0.85 → 1.25s）。對 boss 單體 DPS 提升，對清屏沒有優勢。',
     rarity: 'rare',
-    icon: '🌊',
+    icon: '⚔️',
     weight: 0.7,
-    apply(g) { g.perks.echoPulse = true; }
+    apply(g) { g.perks.pierce = true; }
   },
   // === 純數值加成 ===
   crit_frenzy: {
     id: 'crit_frenzy',
     name: 'Crit Frenzy',
     nameCn: '狂擊精通',
-    desc: '暴擊率 +15%，暴擊倍率 +0.4×',
+    desc: '暴擊率 +15%，暴擊倍率 +0.4×（最多疊 3 層）',
     rarity: 'common',
     icon: '🎯',
     weight: 1.3,
     stackable: true,
+    maxStacks: 3,
     apply(g) {
       g.perks.critChanceBonus += 0.15;
       g.perks.critMultBonus += 0.4;
@@ -65,12 +66,13 @@ export const PERKS = {
     id: 'bloom',
     name: 'Bloom',
     nameCn: '盛綻',
-    desc: '脈衝半徑 +25%',
+    desc: '脈衝半徑 +15%（最多疊 3 層）',
     rarity: 'common',
     icon: '🌸',
     weight: 1.3,
     stackable: true,
-    apply(g) { g.perks.pulseRadiusMult *= 1.25; }
+    maxStacks: 3,
+    apply(g) { g.perks.pulseRadiusMult *= 1.15; }
   },
   swift_step: {
     id: 'swift_step',
@@ -128,7 +130,7 @@ export const PERKS = {
     id: 'spatial_folding',
     name: 'Spatial Folding',
     nameCn: '空間折疊',
-    desc: '繫帶距離 ≥ 16 時，脈衝對場上 HP 最高目標造成 ×2 傷害（自動鎖王）',
+    desc: '繫帶距離 ≥ 16 時，脈衝對場上 HP 最高目標造成 ×1.5 傷害（自動鎖王）',
     rarity: 'legendary',
     icon: '🌌',
     weight: 0.45,
@@ -151,7 +153,7 @@ export const PERKS = {
     id: 'soul_debt',
     name: 'Soul Debt',
     nameCn: '靈魂透支',
-    desc: '靈魂飛到英雄軌道 3 秒（每顆 +3% 傷害，上限 30 顆）；過載釋放微脈衝後 2× 速衝回水晶',
+    desc: '靈魂飛到英雄軌道 3 秒（每顆 +1.5% 傷害，上限 20 顆）；過載釋放微脈衝後 2× 速衝回水晶',
     rarity: 'legendary',
     icon: '🌠',
     weight: 0.45,
@@ -199,11 +201,12 @@ export const FORBIDDEN_PERKS = {
     id: 'volatile_loop',
     name: 'Volatile Loop',
     nameCn: '不穩定迴路',
-    desc: 'Tether Snap 傷害 +400%，但每 10 秒繫帶會自發失控斷裂 1.5 秒（不觸發 Snap）',
+    desc: '脈衝傷害 +150%，但每 10 秒繫帶會自發失控斷裂 1.5 秒（期間倍率歸 1）',
     icon: '⚠️',
     isForbidden: true,
     applyStart(g, CONFIG) {
       g.perks.volatileLoop = true;
+      g.perks.volatilePulseMult = (g.perks.volatilePulseMult || 1) * (1 + CONFIG.volatilePulseBonus);
     }
   },
 };
@@ -211,7 +214,7 @@ export const FORBIDDEN_PERKS = {
 const ALL_IDS = Object.keys(PERKS);
 
 // Gemini Onboarding：第一局卡池對「範圍 / 防守 / 安全型」加權
-// 避免新手首抽拿到 Tether Snap / Soul Debt 這種高操作極端 perk
+// 避免新手首抽拿到 Fang Lunge / Soul Debt 這種高操作極端 perk
 const FIRST_RUN_BOOST_IDS = new Set([
   'aegis_charge',   // 護盾，純防守
   'crystallize',    // 水晶 +HP，純安全

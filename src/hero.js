@@ -255,7 +255,9 @@ export class Hero {
   autoAttack(swarms, hashes, tetherDmgMult, tetherDistance = 0, orbitalSoulCount = 0) {
     const hits = [];
     if (this.pulseTimer > 0) return hits;
-    this.pulseTimer = CONFIG.heroPulseInterval;
+    // AoE 重整 2026-05-21：Pierce 把脈衝間隔 +0.4 秒（trade-off：對 boss 單體 +60% 傷害但降頻）
+    this.pulseTimer = CONFIG.heroPulseInterval
+      + (this.perks?.pierce ? CONFIG.pierceIntervalAdd : 0);
 
     const radiusMult = this.perks?.pulseRadiusMult || 1;
     // 玩家反饋：開局攻擊範圍太小 → 套用 game.js 算好的 earlyRadiusBonus
@@ -266,6 +268,10 @@ export class Hero {
     // W4 Soul Debt 傷害加成
     const soulDebtBonus = (this.perks?.soulDebt && orbitalSoulCount > 0)
       ? (1 + orbitalSoulCount * CONFIG.soulDebtDmgPerSoul) : 1;
+    // AoE 重整 2026-05-21：Pierce 單體傷害倍率
+    const pierceMult = this.perks?.pierce ? CONFIG.pierceDamageMult : 1;
+    // Volatile Loop（禁忌代碼）+150% 脈衝傷害（脈衝專屬，不波及 Dash / KineticReversal）
+    const volatilePulseMult = this.perks?.volatilePulseMult || 1;
 
     this.spawnPulseRing(this.position.x, this.position.z, radius, 0x88ffff, 0.85);
 
@@ -281,13 +287,20 @@ export class Hero {
         if (dx*dx + dz*dz > r2) continue;
 
         const crit = Math.random() < (CONFIG.heroPulseCritChance + (this.perks?.critChanceBonus || 0));
-        let dmg = CONFIG.heroPulseBaseDamage * tetherDmgMult * soulDebtBonus;
+        let dmg = CONFIG.heroPulseBaseDamage * tetherDmgMult * soulDebtBonus * pierceMult * volatilePulseMult;
         if (crit) dmg *= (CONFIG.heroPulseCritMult + (this.perks?.critMultBonus || 0));
         // W4 Regicide: 對 Boss 傷害 +50%
         if (this.perks?.regicide && swarm.isBoss) dmg *= CONFIG.regicideBossDmgMult;
         // W6 Glass Prism / 其他全域傷害倍率
         dmg *= (this.perks?.heroDmgGlobal || 1);
-        hits.push({ swarm, idx: i, killed: false, x: ex, z: ez, dmg, crit, dx, dz });
+        // AoE 重整 2026-05-21：Fang Lunge 印記 — 被 dash 命中的敵人下一次脈衝吃 ×3
+        let fangCrit = false;
+        if (this.perks?.fangLunge && swarm.fangMark && swarm.fangMark[i] > 0) {
+          dmg *= CONFIG.fangLungeMult;
+          swarm.fangMark[i] = 0; // 消耗印記
+          fangCrit = true;
+        }
+        hits.push({ swarm, idx: i, killed: false, x: ex, z: ez, dmg, crit: crit || fangCrit, dx, dz });
       }
     }
 
@@ -365,6 +378,11 @@ export class Hero {
         const killed = swarm.damage(i, dmg);
         const len = Math.max(0.001, Math.hypot(dx, dz));
         swarm.applyKnockback(i, (dx/len) * 14, (dz/len) * 14);
+        // AoE 重整 2026-05-21：Fang Lunge — 對未死的敵人下「狼牙印記」，下一次脈衝 ×3
+        if (this.perks?.fangLunge && !killed) {
+          if (!swarm.fangMark) swarm.fangMark = new Float32Array(swarm.maxCount);
+          swarm.fangMark[i] = CONFIG.fangLungeDuration;
+        }
         hits.push({ swarm, idx: i, killed, x: ex, z: ez, dmg, crit: true });
       }
     }

@@ -28,8 +28,9 @@ export const CONFIG = {
   heroPulseInterval: 0.85,
   heroPulseRadius: 4.0,            // base radius（站樁懲罰已由 tetherInnerPenalty 處理）
   // 玩家反饋（2026-05-20 再次）：開局攻擊範圍太小 → 前 30 秒 ease-in bonus
-  heroPulseEarlyRadiusBoost: 0.25,    // 開局多 25%（4.0 → 5.0）
-  heroPulseEarlyRadiusDuration: 30,   // 線性降回 base 的時間
+  // AoE 重整 2026-05-21：bonus 從 0.25 降到 0.12，避免開局 + Bloom 疊加成超大清屏
+  heroPulseEarlyRadiusBoost: 0.12,
+  heroPulseEarlyRadiusDuration: 30,
   heroPulseBaseDamage: 28,         // Gemini Onboarding 修正：+17%（24→28），白字玩家更易清 leech
   heroPulseCritChance: 0.18,
   heroPulseCritMult: 2.2,
@@ -158,7 +159,7 @@ export const CONFIG = {
   regicideDashCdMult: 0.7,
   regicideLifestealPct: 0.01,
   spatialFoldingDistance: 16,     // tether 距離超過這個就觸發
-  spatialFoldingMult: 2.0,
+  spatialFoldingMult: 1.5,        // AoE 重整 2026-05-21：boss-melt 鈍化（2.0 → 1.5）
   massCollapseSpeedMult: 0.8,
   massCollapseStandTime: 1.5,
   massCollapseRadius: 8,
@@ -168,11 +169,12 @@ export const CONFIG = {
   // 解決「靈魂在英雄旁繞圈，水晶沒充能而暴斃」的卡池內鬼問題
   soulDebtOrbitTime: 3.0,
   soulDebtOrbitRadius: 2.2,
-  soulDebtDmgPerSoul: 0.03,
-  soulDebtMaxOrbit: 30,
-  soulDebtReturnSpeedMult: 2.0,       // 軌道結束後沿 tether 衝回水晶的速度倍率
-  soulDebtMicroPulseDmgMult: 0.3,     // 過載釋放：以 hero 正常脈衝傷害的 30% 觸發 AOE
-  soulDebtMicroPulseRadiusMult: 0.6,  // 半徑 60%
+  // AoE 重整 2026-05-21：3%/隻 (max 30 = +90%) → 1.5%/隻 (max 20 = +30%)；微脈衝 30% → 18%
+  soulDebtDmgPerSoul: 0.015,
+  soulDebtMaxOrbit: 20,
+  soulDebtReturnSpeedMult: 2.0,
+  soulDebtMicroPulseDmgMult: 0.18,
+  soulDebtMicroPulseRadiusMult: 0.6,
 
   // === W5 時間軸天賦 ===
   criticalSuspensionDuration: 0.6,   // hit-stop 觸發後子彈時間總時長（含 hit-stop）
@@ -217,7 +219,8 @@ export const CONFIG = {
   // === W6 禁忌代碼數值 ===
   glassDmgMult: 2.0,
   glassCrystalHpMult: 0.5,
-  volatileSnapBonus: 4.0,             // tetherSnapDamage * (1+4) 倍率
+  // AoE 重整 2026-05-21：Tether Snap 刪除後 Volatile Loop 改掛 +150% 脈衝傷害
+  volatilePulseBonus: 1.5,
   volatileSelfSeverInterval: 10,
   volatileSelfSeverDuration: 1.5,
 
@@ -299,10 +302,14 @@ export const CONFIG = {
   loneWolfTrappedMult: 1.4,           // 困獸觸發的暴擊加成倍率
   aegisSoulsPerShield: 6,
   aegisShieldPerStack: 35,
-  echoPulseDelay: 0.32,
-  echoPulseDamageMult: 0.5,
-  tetherSnapDamage: 140,
-  tetherSnapRadius: 1.7,
+
+  // === AoE 重整新增 2026-05-21 ===
+  // 狼牙突刺：Dash 命中標記，下一次脈衝對該敵人 ×N 倍率
+  fangLungeMult: 3.0,
+  fangLungeDuration: 3.0,
+  // 穿刺：脈衝傷害 +60%，但脈衝間隔 +0.4s（單體傷害 trade-off）
+  pierceDamageMult: 1.6,
+  pierceIntervalAdd: 0.4,
 
   // === 第一局保護 ===
   firstRunEnemyCap: 55,

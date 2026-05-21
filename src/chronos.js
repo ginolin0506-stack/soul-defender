@@ -6,7 +6,7 @@ import { SpatialHash } from './spatialHash.js';
  * Boss Chronos — 時界主宰（W6）
  * - 不擋線、不推人，存在感全靠「時間流速」
  * - 活著時敵人時間 ×2（hero 不受影響 → hero 顯得「慢但精準」）
- * - Hero dash 中 / Tether Snap 後 1s → 敵人時間 ×0.5（給玩家秀操作）
+ * - Hero dash 中 → 敵人時間 ×0.5（給玩家秀操作）
  * - swarm-like 介面相容 hero.autoAttack
  */
 export class Chronos {

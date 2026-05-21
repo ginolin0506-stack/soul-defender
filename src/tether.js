@@ -195,7 +195,7 @@ export class Tether {
     const maxR = CONFIG.tetherMaxRange;
     const tRaw = clamp((this.distance - minR) / (maxR - minR), 0, 1);
 
-    // Gemini 找的 bug: 在 sever 之外保留「自然倍率」給 Tether Snap 判定用
+    // 自然倍率（無 sever 影響）— bot 判斷 dash 時機用
     this.heroDmgMultNatural = lerp(1, CONFIG.tetherDmgMultMax, tRaw);
     this.crystalVulnMultNatural = lerp(1, CONFIG.tetherVulnMultMax, tRaw);
 

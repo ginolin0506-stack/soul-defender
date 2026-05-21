@@ -37,9 +37,7 @@ export class Game {
 
     this.perks = {
       taken: [],
-      tetherSnap: false,
       loneWolf: false,
-      echoPulse: false,
       soulSkipHero: false,
       heroSpeedMult: 1.0,
       dashCooldownMult: 1.0,
@@ -52,6 +50,8 @@ export class Game {
       shieldHp: 0,
       heroDmgGlobal: 1.0,        // W6: Glass Prism 倍率
       volatileLoop: false,       // W6: Volatile Loop flag
+      pierce: false,             // AoE 重整 2026-05-21
+      fangLunge: false,          // AoE 重整 2026-05-21
     };
 
     const realInput = new Input();
@@ -134,7 +134,7 @@ export class Game {
     if (this._botCfg && this._botCfg.bonusPerks > 0) {
       const order = ['aegis_charge', 'crystallize', 'bloom', 'swift_step', 'crystallize',
                      'aegis_charge', 'crystallize', 'bloom', 'crit_frenzy', 'aegis_charge',
-                     'crystallize', 'swift_step', 'echo_pulse', 'aegis_charge', 'crystallize'];
+                     'crystallize', 'swift_step', 'pierce', 'aegis_charge', 'crystallize'];
       for (let i = 0; i < this._botCfg.bonusPerks && i < order.length; i++) {
         const p = PERKS[order[i]];
         if (!p) continue;
@@ -173,7 +173,6 @@ export class Game {
     this._nexusWarningStartElapsed = 0;
     this._chronosWarningStartElapsed = 0;
     this._muWarningStartElapsed = 0;
-    this._echoQueue = [];
     this._pendingLevelUps = 0;       // B1: 多重升級佇列
     this._splitterTutorialFired = false;  // B4: splitter 教學觸發旗
 
@@ -237,7 +236,6 @@ export class Game {
     this.chronosSpawned = false;
     this.chronosWarningShown = false;
     this.chronosTimeMult = 1.0;
-    this.tetherSnapCalmTimer = 0;
     this._volatileLoopTimer = CONFIG.volatileSelfSeverInterval;
     this._lastEnemyCount = 0;
 
@@ -322,16 +320,16 @@ export class Game {
     if (this.bulletTimeRemaining > 0) this.bulletTimeRemaining -= rawDtSec;
     const bulletTimeScale = (this.bulletTimeRemaining > 0) ? CONFIG.criticalSuspensionEnemyScale : 1.0;
 
-    // W6: Chronos 時間調制 — Chronos 活著時 enemyDt ×2，hero dash / snap calm 時 0.5×
+    // W6: Chronos 時間調制 — Chronos 活著時 enemyDt ×2，hero dash 時 0.5×
+    // AoE 重整 2026-05-21：原本 Tether Snap 後也會 calm，現 Snap 已刪除
     let chronosTarget = 1.0;
     if (this.chronos.alive[0]) {
       chronosTarget = CONFIG.chronosAccelMult;
-      if (this.hero.dashTimer > 0 || this.tetherSnapCalmTimer > 0) {
+      if (this.hero.dashTimer > 0) {
         chronosTarget = CONFIG.chronosCalmMult;
       }
     }
     this.chronosTimeMult += (chronosTarget - this.chronosTimeMult) * CONFIG.chronosSpeedLerp;
-    if (this.tetherSnapCalmTimer > 0) this.tetherSnapCalmTimer -= rawDtSec;
     // W7+ Temporal Hourglass：受傷倍率隨時間流速反向掛鉤
     // chronosTimeMult ∈ [0.5, 2.0] → t ∈ [1.0, 0.0]，再 lerp(min, max, t)
     // 結果：accel 全速時 0.15（85% 免傷），calm bullet-time 時 1.0（解禁）
@@ -356,6 +354,16 @@ export class Game {
 
     // === W4 + W6: bossActive 給 Regicide / Chronos 等用
     this.perks.bossActive = this.boss.alive[0] === 1 || this.nexus.alive[0] === 1 || this.chronos.alive[0] === 1 || this.mu.alive[0] === 1;
+
+    // === AoE 重整 2026-05-21：Fang Lunge 印記倒數（只有玩家拿 fangLunge 時才有 fangMark 陣列）===
+    if (this.perks.fangLunge) {
+      for (const sw of this._allSwarmsArr) {
+        if (!sw.fangMark) continue;
+        for (let i = 0; i < sw.maxCount; i++) {
+          if (sw.fangMark[i] > 0) sw.fangMark[i] = Math.max(0, sw.fangMark[i] - rawDtSec);
+        }
+      }
+    }
 
     // W7: 計算 tether 是否穿過 Mu（供 Mu.damage 用）
     if (this.mu.alive[0]) {
@@ -513,14 +521,6 @@ export class Game {
         }
         if (h.killed) this._onKill(h.swarm, h.x, h.z);
       }
-      if (this.perks.echoPulse) {
-        this._echoQueue.push({
-          x: this.hero.position.x,
-          z: this.hero.position.z,
-          expireAt: this.elapsed + CONFIG.echoPulseDelay,
-          dmgMult: CONFIG.echoPulseDamageMult,
-        });
-      }
     }
 
     // === Dash hits ===
@@ -545,20 +545,10 @@ export class Game {
     }
     this.hero.clearDashTags(this.swarm, this.slingers, this.splitters, this.mites, this.boss, this.nexus, this.chronos, this.mu);
 
-    // === Tether Snap ===
-    // Gemini 找的 bug: 用 natural mult，玩家主動斷線優先於 Boss 砍線懲罰
-    if (this.hero.dashJustEnded && this.perks.tetherSnap && this.tether.heroDmgMultNatural >= 1.5) {
-      this._triggerTetherSnap();
-      // W6: tether snap 給 Chronos 制造 calm 緩衝
-      if (this.chronos.alive[0]) this.tetherSnapCalmTimer = CONFIG.chronosCalmDuration;
-    }
     // W5 Kinetic Reversal: Dash 結束製造反相環
     if (this.hero.dashJustEnded && this.perks.kineticReversal) {
       this._triggerKineticReversal();
     }
-
-    // === Echo pulse ===
-    this._processEchoes();
 
     // === Soul Debt micro pulse（半衰期過載釋放）===
     this._processSoulDebtMicroPulses();
@@ -932,7 +922,7 @@ export class Game {
           && !this.boss.alive[0] && !this.nexus.alive[0]) {
         this.chronosSpawned = true;
         this.chronos.spawn(this.crystal);
-        this.tutorial.showCustom('CHRONOS 降臨！怪物時間 ×2 — Dash 或 Tether Snap 可短暫減速', 13);
+        this.tutorial.showCustom('CHRONOS 降臨！怪物時間 ×2 — Dash 期間可短暫減速', 13);
         this.effects.addTrauma(0.9);
         this.effects.addChroma(0.04);
         this.audio.playTetherSnap();
@@ -941,36 +931,7 @@ export class Game {
     }
   }
 
-  _processEchoes() {
-    if (this._echoQueue.length === 0) return;
-    const remaining = [];
-    for (const e of this._echoQueue) {
-      if (this.elapsed < e.expireAt) { remaining.push(e); continue; }
-      const radius = CONFIG.heroPulseRadius * this.perks.pulseRadiusMult * (this.perks._earlyRadiusBonus ?? 1);
-      const r2 = radius * radius;
-      const baseDmg = CONFIG.heroPulseBaseDamage * this.tether.heroDmgMult * e.dmgMult
-        * (this.perks.heroDmgGlobal || 1);
-
-      // B14: 用公開 API 取代摸 hero 內部
-      this.hero.spawnPulseRing(e.x, e.z, radius, 0xff66dd, 0.7);
-
-      for (const sw of this._allSwarms()) {
-        for (let i = 0; i < sw.maxCount; i++) {
-          if (!sw.alive[i]) continue;
-          const dx = sw.pos[i*3+0] - e.x;
-          const dz = sw.pos[i*3+2] - e.z;
-          if (dx*dx + dz*dz > r2) continue;
-          const killed = sw.damage(i, baseDmg);
-          this.effects.spawnDamageNumber(sw.pos[i*3+0], 0.8, sw.pos[i*3+2], baseDmg, false);
-          if (killed) this._onKill(sw, sw.pos[i*3+0], sw.pos[i*3+2]);
-        }
-      }
-      this.audio.playHit(1.3);
-    }
-    this._echoQueue = remaining;
-  }
-
-  /** Soul Debt 半衰期：靈魂軌道結束時釋放微脈衝（30% 傷害、60% 半徑）然後 2× 速衝回水晶 */
+  /** Soul Debt 半衰期：靈魂軌道結束時釋放微脈衝（18% 傷害、60% 半徑）然後 2× 速衝回水晶 */
   _processSoulDebtMicroPulses() {
     const queue = this.tether.microPulseQueue;
     if (!queue || queue.length === 0) return;
@@ -993,40 +954,6 @@ export class Game {
       }
     }
     queue.length = 0;
-  }
-
-  _triggerTetherSnap() {
-    const hx = this.hero.position.x, hz = this.hero.position.z;
-    const cx = this.crystal.position.x, cz = this.crystal.position.z;
-    const dx = cx - hx, dz = cz - hz;
-    const len = Math.max(0.001, Math.hypot(dx, dz));
-    const nx = dx / len, nz = dz / len;
-    // W6: Volatile Loop +400% snap dmg；heroDmgGlobal 全域倍率
-    let snapMult = 1.0;
-    if (this.perks.volatileLoop) snapMult *= (1 + CONFIG.volatileSnapBonus);
-    const damage = CONFIG.tetherSnapDamage * this.tether.heroDmgMultNatural
-      * snapMult * (this.perks.heroDmgGlobal || 1);
-    const radius2 = CONFIG.tetherSnapRadius * CONFIG.tetherSnapRadius;
-
-    for (const sw of this._allSwarms()) {
-      for (let i = 0; i < sw.maxCount; i++) {
-        if (!sw.alive[i]) continue;
-        const ex = sw.pos[i*3+0], ez = sw.pos[i*3+2];
-        const relX = ex - hx, relZ = ez - hz;
-        const along = relX * nx + relZ * nz;
-        if (along < 0 || along > len) continue;
-        const perpX = relX - nx * along, perpZ = relZ - nz * along;
-        if (perpX*perpX + perpZ*perpZ > radius2) continue;
-        const killed = sw.damage(i, damage);
-        this.effects.spawnDamageNumber(ex, 1.0, ez, damage, true);
-        if (killed) this._onKill(sw, ex, ez);
-      }
-    }
-    this.tether.flashSnap();
-    this.audio.playTetherSnap();
-    this._impact(0.1);  // W5
-    this.effects.addTrauma(0.45);
-    this.effects.addChroma(0.025);
   }
 
   /** W5 包裝：hit-stop + 可能觸發 bullet time（取決於 Critical Suspension perk） */
@@ -1612,9 +1539,7 @@ export class Game {
   /** W7: 召喚 Mu 時備份所有 perk 效果欄位後重設為預設 */
   _muSnapshotPerks() {
     this._perksBackup = {
-      tetherSnap: this.perks.tetherSnap,
       loneWolf: this.perks.loneWolf,
-      echoPulse: this.perks.echoPulse,
       soulSkipHero: this.perks.soulSkipHero,
       soulDebt: this.perks.soulDebt,
       volatileLoop: this.perks.volatileLoop,
@@ -1623,6 +1548,9 @@ export class Game {
       massCollapse: this.perks.massCollapse,
       kineticReversal: this.perks.kineticReversal,
       criticalSuspension: this.perks.criticalSuspension,
+      pierce: this.perks.pierce,
+      fangLunge: this.perks.fangLunge,
+      volatilePulseMult: this.perks.volatilePulseMult,
       heroSpeedMult: this.perks.heroSpeedMult,
       dashCooldownMult: this.perks.dashCooldownMult,
       pulseRadiusMult: this.perks.pulseRadiusMult,
@@ -1634,9 +1562,7 @@ export class Game {
       shieldHp: this.perks.shieldHp,
     };
     // 全部重設為預設
-    this.perks.tetherSnap = false;
     this.perks.loneWolf = false;
-    this.perks.echoPulse = false;
     this.perks.soulSkipHero = false;
     this.perks.soulDebt = false;
     this.perks.volatileLoop = false;
@@ -1645,6 +1571,9 @@ export class Game {
     this.perks.massCollapse = false;
     this.perks.kineticReversal = false;
     this.perks.criticalSuspension = false;
+    this.perks.pierce = false;
+    this.perks.fangLunge = false;
+    this.perks.volatilePulseMult = 1;
     this.perks.heroSpeedMult = 1.0;
     this.perks.dashCooldownMult = 1.0;
     this.perks.pulseRadiusMult = 1.0;
@@ -1654,7 +1583,6 @@ export class Game {
     this.perks.heroDmgGlobal = 1.0;
     this.perks.aegisStacks = 0;
     this.perks.shieldHp = 0;
-    this._echoQueue.length = 0;     // 清掉殘留的 echo 佇列
   }
 
   /** W7: Mu 死亡時恢復 perks */
