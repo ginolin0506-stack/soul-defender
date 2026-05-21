@@ -280,7 +280,7 @@
       display: none;
       align-items: center; justify-content: center;
       flex-direction: column;
-      background: radial-gradient(ellipse at center, rgba(80,10,30,0.55), rgba(0,0,0,0.95));
+      background: radial-gradient(ellipse at center, rgba(40,5,15,0.92), rgba(0,0,0,0.98));
       z-index: 10;
       animation: fade-in 0.6s ease-out;
       overflow-y: auto;
@@ -320,15 +320,57 @@
       letter-spacing: 6px;
       color: #c0a8ff;
     }
-    .tech-currency {
-      font-size: 14px;
-      color: #aaeeff;
+    .currency-banner {
+      margin: 0 0 24px;
+      padding: 16px 28px;
+      background: linear-gradient(135deg, rgba(0,30,60,0.55), rgba(20,5,40,0.55));
+      border: 1px solid rgba(102,255,217,0.45);
+      border-radius: 12px;
+      box-shadow: 0 0 24px rgba(102,255,217,0.18), inset 0 0 24px rgba(0,0,0,0.3);
+      display: flex;
+      justify-content: space-around;
+      align-items: center;
+      gap: 24px;
     }
-    .tech-currency b {
-      color: #fff;
-      font-size: 20px;
-      font-weight: 700;
-      margin: 0 4px;
+    .currency-banner .cb-item {
+      display: flex; flex-direction: column;
+      align-items: center;
+      text-align: center;
+      min-width: 120px;
+    }
+    .currency-banner .cb-label {
+      font-size: 12px;
+      letter-spacing: 3px;
+      color: #88aacc;
+      opacity: 0.85;
+      margin-bottom: 6px;
+    }
+    .currency-banner .cb-value {
+      font-size: 36px;
+      font-weight: 800;
+      color: #66ffd9;
+      text-shadow: 0 0 14px rgba(102,255,217,0.65);
+      font-variant-numeric: tabular-nums;
+      line-height: 1;
+    }
+    .currency-banner .cb-value.run {
+      color: #ffe066;
+      text-shadow: 0 0 14px rgba(255,224,102,0.55);
+    }
+    .currency-banner .cb-value b { font-weight: inherit; }
+    .currency-banner .cb-icon {
+      font-size: 22px;
+      margin-left: 6px;
+    }
+    .currency-banner .cb-divider {
+      width: 1px;
+      height: 48px;
+      background: linear-gradient(to bottom, transparent, rgba(255,255,255,0.25), transparent);
+    }
+    @media (max-width: 600px) {
+      .currency-banner { flex-direction: column; gap: 14px; padding: 14px; }
+      .currency-banner .cb-divider { width: 80%; height: 1px; background: linear-gradient(to right, transparent, rgba(255,255,255,0.25), transparent); }
+      .currency-banner .cb-value { font-size: 30px; }
     }
     #tech-tree-grid {
       display: grid;
@@ -926,13 +968,22 @@
       <div>等級 <b id="final-level">1</b></div>
       <div>擊殺 <b id="final-kills">0</b></div>
       <div>時間 <b id="final-time">0</b>s</div>
-      <div>本局收穫 <b id="run-souls">0</b> 💠</div>
       <div>累計局數 <b id="run-count">0</b></div>
     </div>
     <div class="tech-section">
       <div class="tech-section-header">
         <div class="tech-tree-title">永久升級 — TECH TREE</div>
-        <div class="tech-currency">擁有 <b id="total-souls">0</b> 💠</div>
+      </div>
+      <div class="currency-banner">
+        <div class="cb-item">
+          <div class="cb-label">本局收穫</div>
+          <div class="cb-value run">+<b id="run-souls">0</b><span class="cb-icon">💠</span></div>
+        </div>
+        <div class="cb-divider"></div>
+        <div class="cb-item">
+          <div class="cb-label">累計擁有</div>
+          <div class="cb-value"><b id="total-souls">0</b><span class="cb-icon">💠</span></div>
+        </div>
       </div>
       <div id="tech-tree-grid"></div>
       <div id="imprint-wrap" class="meta-extra"></div>
@@ -967,6 +1018,6 @@
   </div>
 
   <!-- ?v=YYYYMMDD-x 是 cache busting；改任何 src/*.js 後把這個版本號 +1 就會強制瀏覽器重新抓 -->
-  <script type="module" src="./src/main.js?v=20260521a"></script>
+  <script type="module" src="./src/main.js?v=20260521b"></script>
 </body>
 </html>
