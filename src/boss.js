@@ -25,6 +25,11 @@ export class Boss {
     this.orbitAngle = 0;
     this.shockwaveTimer = CONFIG.bossShockwaveInterval;
     this.activeShockwave = null;       // {x, z, radius, hitFlag}
+    // W7+ Overload Resonance: phase 2 把 pulse 傷害的一部分儲存，定期打水晶
+    this.overloadCharge = 0;
+    this.overloadTimer = 0;
+    this.overloadDischargeDmg = 0;     // game.js 每 tick 讀+清
+    this.overloadFlash = 0;            // 視覺：discharge 後短閃
 
     this.hash = new SpatialHash(3.5);
 
@@ -112,6 +117,10 @@ export class Boss {
     this.mesh.visible = true;
     this.shockwaveTimer = CONFIG.bossShockwaveInterval;
     this.activeShockwave = null;
+    this.overloadCharge = 0;
+    this.overloadTimer = CONFIG.bossOverloadDischargeInterval;
+    this.overloadDischargeDmg = 0;
+    this.overloadFlash = 0;
   }
 
   fillHash() {
@@ -127,10 +136,14 @@ export class Boss {
     }
 
     // === 階段判定 ===
+    // W7+ Counter-build：phase 2 閾值從 0.25 提前到 0.35（Overload Resonance + 衝擊波並行）
     const ratio = this.hp[0] / this.maxHp;
-    if (ratio < 0.25) this.phase = 2;
+    const prevPhase = this.phase;
+    if (ratio < CONFIG.bossPhase2HpRatio) this.phase = 2;
     else if (ratio < 0.5) this.phase = 1;
     else this.phase = 0;
+    // 首次進入 P2 立刻把 timer 歸零，讓首發 discharge 1 tick 內就 fire（避免 fast kill 完全 skip 機制）
+    if (this.phase === 2 && prevPhase !== 2) this.overloadTimer = 0;
 
     // === 軌道移動 ===
     const orbitSpeed = [CONFIG.bossOrbitSpeedP0, CONFIG.bossOrbitSpeedP1, CONFIG.bossOrbitSpeedP2][this.phase];
@@ -147,25 +160,41 @@ export class Boss {
     this.eye.position.x = Math.sin(eyeLocalDir) * CONFIG.bossRadius;
     this.eye.position.z = Math.cos(eyeLocalDir) * CONFIG.bossRadius;
 
-    // flash
+    // flash + W7+ overload discharge 視覺強閃
     if (this.flashTime[0] > 0) this.flashTime[0] -= dt;
     const f = Math.max(0, this.flashTime[0] / 0.15);
-    this.bodyMat.emissiveIntensity = 0.5 + f * 3;
-    this.eyeMat.color.setRGB(1 + f * 4, 0.2 + f * 4, 0.27 + f * 4);
+    const od = Math.max(0, this.overloadFlash / 0.25);
+    this.bodyMat.emissiveIntensity = 0.5 + f * 3 + od * 5;
+    this.eyeMat.color.setRGB(1 + f * 4 + od * 6, 0.2 + f * 4, 0.27 + f * 4);
 
     // 環脈動 — 隨階段顏色變
     const phaseColor = [0xff3366, 0xff7733, 0xff0011][this.phase];
     this.ringMat.color.setHex(phaseColor);
     this.ringMat.opacity = 0.35 + 0.15 * Math.sin(performance.now() * 0.005);
 
-    // 階段 2：衝擊波
+    // 階段 2：衝擊波 + W7+ Overload Resonance discharge
     if (this.phase === 2) {
       this.shockwaveTimer -= dt;
       if (this.shockwaveTimer <= 0 && !this.activeShockwave) {
         this.shockwaveTimer = CONFIG.bossShockwaveInterval;
         this._emitShockwave();
       }
+      // Overload：tick timer，到了就把儲存值打出去
+      this.overloadTimer -= dt;
+      if (this.overloadTimer <= 0) {
+        this.overloadTimer = CONFIG.bossOverloadDischargeInterval;
+        if (this.overloadCharge > 0) {
+          this.overloadDischargeDmg = this.overloadCharge * CONFIG.bossOverloadDischargeMult;
+          this.overloadCharge = 0;
+          this.overloadFlash = 0.25;  // body 短暫白閃
+        }
+      }
+    } else {
+      // 退出 phase 2（不太可能但保險）→ 清掉儲存避免下次進 P2 直接放
+      this.overloadCharge = 0;
     }
+    // overloadFlash 衰減（疊在 phase 2 之外也要跑，閃完才結束）
+    if (this.overloadFlash > 0) this.overloadFlash -= dt;
     return this._updateShockwave(dt, crystal);
   }
 
@@ -233,8 +262,17 @@ export class Boss {
 
   damage(i, amount) {
     if (!this.alive[0]) return false;
-    this.hp[0] -= amount;
     this.flashTime[0] = 0.15;
+    // W7+ Overload Resonance：P2 時傷害「分流」— storePct 變 charge，剩下才削 HP
+    // 效果：P2 延長 → discharge 有時間 fire → 反過來把儲存能量打回水晶（bypass shield）
+    if (this.phase === 2) {
+      const stored = amount * CONFIG.bossOverloadStorePct;
+      const hpDmg = amount - stored;
+      this.hp[0] -= hpDmg;
+      this.overloadCharge += stored;
+    } else {
+      this.hp[0] -= amount;
+    }
     if (this.hp[0] <= 0) {
       this.alive[0] = 0;
       this.mesh.visible = false;

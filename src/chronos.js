@@ -23,6 +23,9 @@ export class Chronos {
     this.hash = new SpatialHash(3.0);
 
     this.orbitAngle = 0;
+    // W7+ Temporal Hourglass：受傷倍率，由 game.js 每幀依 chronosTimeMult 更新
+    // 1.0 = 全力受傷（bullet-time 黃金窗口）； 0.15 = 85% 免傷（全速怪潮時）
+    this.damageTakenMult = CONFIG.chronosDmgReductionMin;
 
     // === 視覺：浮空時鐘盤 ===
     const group = new THREE.Group();
@@ -144,12 +147,18 @@ export class Chronos {
     this.handMat.color.setRGB(1 + f * 3, 0.93 + f * 3, 0.73 + f * 3);
 
     // 地面陰影圈呼吸（脈動表現「時間扭曲」感）
-    this.shadowMat.opacity = 0.25 + 0.15 * Math.sin(performance.now() * 0.008);
+    // W7+ Hourglass：受傷倍率高（玩家在 bullet-time 窗口）時陰影圈更亮，提示「現在能打」
+    const vulnT = (this.damageTakenMult - CONFIG.chronosDmgReductionMin)
+      / (CONFIG.chronosDmgReductionMax - CONFIG.chronosDmgReductionMin);
+    this.shadowMat.opacity = 0.15 + 0.25 * vulnT + 0.1 * Math.sin(performance.now() * 0.008);
+    this.shadowMat.color.setRGB(0.4 + vulnT * 0.6, 0.87 + vulnT * 0.1, 1.0);  // 偏白藍 = 易受傷
   }
 
   damage(i, amount) {
     if (!this.alive[0]) return false;
-    this.hp[0] -= amount;
+    // W7+ Temporal Hourglass：受傷倍率與全域時間流速反向掛鉤
+    const effectiveDmg = amount * this.damageTakenMult;
+    this.hp[0] -= effectiveDmg;
     this.flashTime[0] = 0.15;
     if (this.hp[0] <= 0) {
       this.alive[0] = 0;

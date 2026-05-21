@@ -105,6 +105,17 @@ export const CONFIG = {
   bossShockwaveDamage: 55,
   bossXp: 80,
   bossKillSouls: 25,
+  // 平衡 2026-05-21 Counter-build：Ohm Phase 3 Overload Resonance
+  // 進入 phase 2（< 35% HP，閾值原 0.25 提前）時，把吃到的 pulse 傷害 50% 儲存
+  // 每 2 秒沿 tether 把儲存值化為「連鎖閃電」打水晶 → 強迫高頻 build 暫停輸出
+  bossPhase2HpRatio: 0.35,
+  // P2 進入後：傷害「分流」— storePct 的比例變成 charge meter，其餘 (1-storePct) 才扣 HP
+  // 等於 P2 時 Ohm 取得「軟性免傷」+「鏡像回打水晶」，延長戰鬥讓 discharge 有時間發
+  // 之前是純疊加（不削 HP），導致 Ohm 在 4s 內死光，discharge 還沒 fire 過
+  bossOverloadStorePct: 0.6,
+  bossOverloadDischargeInterval: 1.5,  // 縮短間隔，P2 期間 fire 2-3 次
+  bossOverloadDischargeMult: 1.0,
+  bossOverloadBypassShield: true,      // discharge 沿 tether 直接打水晶，繞過 aegis 盾
 
   // === Boss Nexus (W4) ===
   nexusSpawnTime: 360,
@@ -166,6 +177,13 @@ export const CONFIG = {
   chronosXp: 130,
   chronosKillSouls: 40,
   chronosSpeedLerp: 0.08,              // 平滑度
+  // 平衡 2026-05-21 Counter-build：Chronos Temporal Hourglass
+  // 受傷倍率 = lerp(min, max, (chronosTimeMult-0.5)/1.5)
+  // - chronosTimeMult=2.0（怪潮全速）→ 倍率 0.15（85% 免傷，逼玩家觸發 bullet-time）
+  // - chronosTimeMult=0.5（dash/snap calm）→ 倍率 1.0（解禁，全力輸出黃金窗口）
+  // 0.15 (85% 免傷) 對 bot 太兇導致 wall timeout；0.3 (70% 免傷) 仍迫使玩家管理 dash 節奏但 bot 可測
+  chronosDmgReductionMin: 0.3,
+  chronosDmgReductionMax: 1.0,
 
   // === W6 Meta 擴張 ===
   metaImprintSlotCost: 800,           // 一次性解鎖「烙印」功能

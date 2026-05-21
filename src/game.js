@@ -314,6 +314,15 @@ export class Game {
     }
     this.chronosTimeMult += (chronosTarget - this.chronosTimeMult) * CONFIG.chronosSpeedLerp;
     if (this.tetherSnapCalmTimer > 0) this.tetherSnapCalmTimer -= rawDtSec;
+    // W7+ Temporal Hourglass：受傷倍率隨時間流速反向掛鉤
+    // chronosTimeMult ∈ [0.5, 2.0] → t ∈ [1.0, 0.0]，再 lerp(min, max, t)
+    // 結果：accel 全速時 0.15（85% 免傷），calm bullet-time 時 1.0（解禁）
+    {
+      const cMin = CONFIG.chronosCalmMult, cMax = CONFIG.chronosAccelMult;
+      const t = Math.max(0, Math.min(1, (cMax - this.chronosTimeMult) / (cMax - cMin)));
+      this.chronos.damageTakenMult =
+        CONFIG.chronosDmgReductionMin + (CONFIG.chronosDmgReductionMax - CONFIG.chronosDmgReductionMin) * t;
+    }
 
     // 最終敵人時間 = hero dt × bullet time × chronos
     const enemyDt = dt * bulletTimeScale * this.chronosTimeMult;
@@ -514,6 +523,17 @@ export class Game {
       this.effects.addTrauma(0.35);
       this.effects.addChroma(0.025);
       this.audio.playCrystalHit();
+    }
+
+    // === W7+ Ohm Overload Resonance：把儲存的傷害沿 tether 打到水晶 ===
+    if (this.boss.overloadDischargeDmg > 0) {
+      const dmg = this.boss.overloadDischargeDmg * this.tether.crystalVulnMult;
+      this.boss.overloadDischargeDmg = 0;
+      // bypass shield：閃電沿 tether 內部直擊水晶核心，aegis 盾無法吸收（設計意圖：強迫玩家暫停輸出）
+      this._damageCrystal(dmg, CONFIG.bossOverloadBypassShield);
+      this.effects.addTrauma(0.4);
+      this.effects.addChroma(0.03);
+      this.audio.playTetherSnap();
     }
 
     // === Splitter 死亡 → spawn mites（B3: 移到所有死亡來源之後、syncInstances 之前） ===
@@ -943,12 +963,12 @@ export class Game {
     this.audio.playDashHit();
   }
 
-  _damageCrystal(amount) {
+  _damageCrystal(amount, bypassShield = false) {
     // W4 Mass Collapse: 重力場啟動時，水晶受所有傷害減 25%
     if (this.perks.massCollapse && this.hero.gravityWellActive) {
       amount *= (1 - CONFIG.massCollapseCrystalDmgReduction);
     }
-    if (this.perks.shieldHp > 0) {
+    if (!bypassShield && this.perks.shieldHp > 0) {
       const absorbed = Math.min(this.perks.shieldHp, amount);
       this.perks.shieldHp -= absorbed;
       amount -= absorbed;
