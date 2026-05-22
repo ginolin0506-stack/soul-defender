@@ -377,7 +377,8 @@ export class Hero {
         dmg *= (this.perks?.heroDmgGlobal || 1);
         const killed = swarm.damage(i, dmg);
         const len = Math.max(0.001, Math.hypot(dx, dz));
-        swarm.applyKnockback(i, (dx/len) * 14, (dz/len) * 14);
+        const kb = CONFIG.heroDashKnockback;
+        swarm.applyKnockback(i, (dx/len) * kb, (dz/len) * kb);
         // AoE 重整 2026-05-21：Fang Lunge — 對未死的敵人下「狼牙印記」，下一次脈衝 ×3
         if (this.perks?.fangLunge && !killed) {
           if (!swarm.fangMark) swarm.fangMark = new Float32Array(swarm.maxCount);

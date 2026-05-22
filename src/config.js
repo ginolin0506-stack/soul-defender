@@ -20,9 +20,11 @@ export const CONFIG = {
   // 英雄獨立血量系統（2026-05-21 設計重做）
   // 玩家觸怪會扣血，繫帶連著時慢回；hero HP → 0 = Game Over（與水晶 HP 並列死亡條件）
   heroMaxHp: 100,
-  heroTouchDamage: 12,              // 觸怪一次扣的血量（leech / splitter / mite 共用）
+  // 2026-05-22 平衡：站樁無代價（單次傷害 3s 即回滿）→ heal 4→1.5、觸怪 12→18
+  // 連續觸怪 DPS 20→30，扣回血淨 28.5 HP/s = 3.5s 死；單次傷害需 12s 才回滿
+  heroTouchDamage: 18,              // 觸怪一次扣的血量（leech / splitter / mite 共用）
   heroTouchIframe: 0.6,             // 觸怪後無敵時間，避免擠進怪堆秒死
-  heroTetherHealRate: 4.0,          // HP / 秒；繫帶未斷且未被 boss 鎖回血時生效
+  heroTetherHealRate: 1.5,          // HP / 秒；繫帶未斷且未被 boss 鎖回血時生效
   heroHealBlockOnBossTether: 3.0,   // boss 壓繫帶後鎖回血秒數
   heroBeamDamage: 18,               // boss 光束打中 hero 一次的傷害
   heroPulseInterval: 0.85,
@@ -36,9 +38,12 @@ export const CONFIG = {
   heroPulseCritMult: 2.2,
   heroDashDistance: 6.5,
   heroDashDuration: 0.16,
-  heroDashCooldown: 0.9,           // Gemini Onboarding：1.0→0.9 配合 damage buff 強化白字
-  heroDashDamage: 80,
+  // 2026-05-22 平衡：開局 dash 過強（DPS ≈ 89、一擊秒 leech）逼退脈衝定位
+  // 改為「位移工具」走向 — damage / CD 砍、knockback 倍增
+  heroDashCooldown: 1.5,
+  heroDashDamage: 45,
   heroDashRadius: 1.1,
+  heroDashKnockback: 28,           // 配 leechKnockbackRecover 5.5 → 位移 ≈ 5.1u（脈衝 4 → 0.7u）
 
   // === Soul Tether ===
   tetherMaxRange: 18,
