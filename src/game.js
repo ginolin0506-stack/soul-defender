@@ -1201,7 +1201,7 @@ export class Game {
     const cx = this.crystal.position.x, cz = this.crystal.position.z;
     const r = CONFIG.kineticReversalRadius;
     const r2 = r * r;
-    const dmg = 50 * this.tether.heroDmgMultNatural * (this.perks.heroDmgGlobal || 1);
+    const dmg = CONFIG.kineticReversalDamage * this.tether.heroDmgMultNatural * (this.perks.heroDmgGlobal || 1);
 
     // 視覺：藍色反相環
     this.hero.spawnPulseRing(hx, hz, r, 0x44aaff, 0.8);

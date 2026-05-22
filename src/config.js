@@ -33,7 +33,7 @@ export const CONFIG = {
   // AoE 重整 2026-05-21：bonus 從 0.25 降到 0.12，避免開局 + Bloom 疊加成超大清屏
   heroPulseEarlyRadiusBoost: 0.12,
   heroPulseEarlyRadiusDuration: 30,
-  heroPulseBaseDamage: 28,         // Gemini Onboarding 修正：+17%（24→28），白字玩家更易清 leech
+  heroPulseBaseDamage: 37,         // 2026-05-22：定錨 Leech HP × 2/3（55 × 0.667 ≈ 36.67 → 37），2 發殺 leech
   heroPulseCritChance: 0.18,
   heroPulseCritMult: 2.2,
   heroDashDistance: 6.5,
@@ -287,6 +287,7 @@ export const CONFIG = {
   criticalSuspensionEnemyScale: 0.18, // 子彈時間內怪物速度倍率
   kineticReversalRadius: 8,
   kineticReversalForce: 24,           // 推力強度
+  kineticReversalDamage: 14,          // 2026-05-22：定錨 Leech HP × 1/4（55 × 0.25 ≈ 13.75 → 14），純控場非清屏
   kineticReversalDebuffDuration: 2.0, // 被擊退敵人 2 秒內吃額外 50% 傷害
   kineticReversalDebuffMult: 1.5,
 
