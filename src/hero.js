@@ -253,10 +253,9 @@ export class Hero {
    * AOE 脈衝攻擊（覆蓋多 swarm）
    * @param swarms array of swarm
    * @param hashes array of hash（一一對應）
-   * @param tetherDistance 用於 Lone Wolf 困獸密度偵測（距離 < 內圈才啟動）
    * @param orbitalSoulCount Soul Debt 軌道靈魂數，每顆 +3% 傷害
    */
-  autoAttack(swarms, hashes, tetherDistance = 0, orbitalSoulCount = 0) {
+  autoAttack(swarms, hashes, orbitalSoulCount = 0) {
     const hits = [];
     if (this.pulseTimer > 0) return hits;
     // AoE 重整 2026-05-21：Pierce 把脈衝間隔 +0.4 秒（trade-off：對 boss 單體 +60% 傷害但降頻）
@@ -305,22 +304,6 @@ export class Hero {
           fangCrit = true;
         }
         hits.push({ swarm, idx: i, killed: false, x: ex, z: ez, dmg, crit: crit || fangCrit, dx, dz });
-      }
-    }
-
-    // Lone Wolf 困獸：距離 < loneWolfInnerDistance 且周圍密度 > loneWolfDensityThreshold → 強制 ×loneWolfTrappedMult
-    if (this.perks?.loneWolf && hits.length > 0 && tetherDistance < CONFIG.loneWolfInnerDistance) {
-      let nearby = 0;
-      const dr = CONFIG.loneWolfDensityRadius;
-      for (let s = 0; s < swarms.length; s++) {
-        const cand = hashes[s].queryXZ(this.position.x, this.position.z, dr);
-        const swarm = swarms[s];
-        for (let k = 0; k < cand.length; k++) {
-          if (swarm.alive[cand[k]]) nearby++;
-        }
-      }
-      if (nearby > CONFIG.loneWolfDensityThreshold) {
-        for (const h of hits) h.dmg *= CONFIG.loneWolfTrappedMult;
       }
     }
 

@@ -389,11 +389,6 @@ export const CONFIG = {
   xpExponent: 1.18,
 
   // === 天賦 ===
-  // Lone Wolf 困獸：被擠在水晶旁 + 周圍密度爆量時強制 +40% 倍率
-  loneWolfInnerDistance: 10,          // 距離小於這個才偵測密度
-  loneWolfDensityRadius: 5,           // 困獸密度偵測半徑
-  loneWolfDensityThreshold: 150,      // 密度門檻
-  loneWolfTrappedMult: 1.4,           // 困獸觸發的倍率
   aegisSoulsPerShield: 6,
   aegisShieldPerStack: 35,
 

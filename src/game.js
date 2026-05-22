@@ -42,7 +42,6 @@ export class Game {
 
     this.perks = {
       taken: [],
-      loneWolf: false,
       soulSkipHero: false,
       heroSpeedMult: 1.0,
       dashCooldownMult: 1.0,
@@ -555,7 +554,6 @@ export class Game {
     const hashes = this._allHashes();
     const pulseHits = this.hero.autoAttack(
       swarms, hashes,
-      this.tether.distance,            // 給 Lone Wolf 困獸密度偵測
       this.tether.orbitalCount          // 給 Soul Debt
     );
     if (pulseHits.length > 0) {
@@ -1742,7 +1740,6 @@ export class Game {
   /** W7: 召喚 Mu 時備份所有 perk 效果欄位後重設為預設 */
   _muSnapshotPerks() {
     this._perksBackup = {
-      loneWolf: this.perks.loneWolf,
       soulSkipHero: this.perks.soulSkipHero,
       soulDebt: this.perks.soulDebt,
       volatileLoop: this.perks.volatileLoop,
@@ -1764,7 +1761,6 @@ export class Game {
       shieldHp: this.perks.shieldHp,
     };
     // 全部重設為預設
-    this.perks.loneWolf = false;
     this.perks.soulSkipHero = false;
     this.perks.soulDebt = false;
     this.perks.volatileLoop = false;

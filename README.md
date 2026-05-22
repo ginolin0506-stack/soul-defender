@@ -16,7 +16,7 @@
 
 - **Soul Tether（靈魂繫帶）**：英雄與水晶間有可見能量繫帶 — 把擊殺的靈魂引回水晶，並為英雄緩慢回血；被 boss 切斷時停回血。
 - **4 個 Boss**：Ohm（切繫帶）/ Nexus（推開繫帶）/ Chronos（加速怪潮）/ Mu（禁用所有 perk）
-- **14 個天賦 + 2 個禁忌代碼**：每局升級三選一
+- **13 個天賦 + 2 個禁忌代碼**：每局升級三選一
 - **Endless Mode**：擊破 Nexus 後解鎖灰階熵增模式
 - **Terminal 排行榜**：Top 10 by Entropy
 - **跨裝置存檔**：Base64 export / import

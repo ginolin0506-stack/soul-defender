@@ -1,6 +1,6 @@
 import { CONFIG } from './config.js';
 
-// === 14 個天賦定義 ===
+// === 13 個天賦定義 ===
 // 數個有獨特邏輯（active flag），其餘是純數值加成（stat mod）
 
 export const PERKS = {
@@ -13,16 +13,6 @@ export const PERKS = {
     icon: '🗡️',
     weight: 0.45,
     apply(g) { g.perks.fangLunge = true; }
-  },
-  lone_wolf: {
-    id: 'lone_wolf',
-    name: 'Lone Wolf',
-    nameCn: '困獸',
-    desc: '被擠在水晶旁 (距離 <10) 且周圍 150+ 怪時，脈衝傷害 ×1.4',
-    rarity: 'rare',
-    icon: '🐺',
-    weight: 0.75,
-    apply(g) { g.perks.loneWolf = true; }
   },
   aegis_charge: {
     id: 'aegis_charge',

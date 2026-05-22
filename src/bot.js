@@ -29,7 +29,6 @@ const PERK_PRIORITY = {
   critical_suspension:  35,
   soul_vacuum:          25,
   soul_debt:             5,  // 軌道機制 bot 不會用
-  lone_wolf:             5,  // 困獸模式 bot 很少會被擠到水晶旁
   mass_collapse:         1,  // 移速 -20% 直接拖累 bot 移動
 };
 
