@@ -30,8 +30,8 @@ export const CONFIG = {
   heroPulseInterval: 0.85,
   heroPulseRadius: 4.0,            // base radius
   // 玩家反饋（2026-05-20 再次）：開局攻擊範圍太小 → 前 30 秒 ease-in bonus
-  // AoE 重整 2026-05-21：bonus 從 0.25 降到 0.12，避免開局 + Bloom 疊加成超大清屏
-  heroPulseEarlyRadiusBoost: 0.12,
+  // 2026-05-22：玩家覺得初始衝擊波還是太小，從 0.12 拉回到 0.30（介於原始 0.25 與更激進之間）
+  heroPulseEarlyRadiusBoost: 0.30,
   heroPulseEarlyRadiusDuration: 30,
   heroPulseBaseDamage: 37,         // 2026-05-22：定錨 Leech HP × 2/3（55 × 0.667 ≈ 36.67 → 37），2 發殺 leech
   heroPulseCritChance: 0.18,
