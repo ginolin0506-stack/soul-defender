@@ -77,29 +77,125 @@ export const CONFIG = {
   slingerFireInterval: 2.2,
   slingerSeparationRadius: 1.8,
   slingerXp: 7,
-  slingerStartTime: 35,    // 玩家反饋：太早出現，改成 35s 才出
+  slingerStartTime: 30,    // 2026-05-22：搭配新怪變化，提前到 30s
 
-  // === Splitter（分裂怪） ===
+  // === Splitter（炸彈衝刺怪，2026-05-22 重設計）===
+  // 機制：高速衝向水晶（leech 之上），HP 低，死亡 / 撞水晶時拋出 3 顆炸彈
+  // 炸彈飛行 → 引信到 → AoE 同時對 hero 與 crystal 造成傷害（兩段威脅）
   maxSplitters: 40,
-  splitterSpeed: 2.0,
-  splitterHp: 180,
-  splitterDamage: 22,
-  splitterRadius: 0.95,
-  splitterXp: 12,
-  splitterStartTime: 60,    // 配合 slinger 延後，splitter 更晚
+  splitterSpeed: 6.6,          // 高速衝刺（leech 3.4 × 1.94）→ 玩家必須優先處理
+  splitterHp: 90,              // 從 180 砍半 — 高速 trade-off，較好點掉
+  splitterDamage: 28,          // 撞水晶傷害提高，補償血量降低
+  splitterRadius: 0.85,
+  splitterXp: 14,
+  splitterStartTime: 50,    // 2026-05-22：和其他類型錯開，提前 10s
   splitterSpawnInterval: 3.5,
   splitterSpawnTargetBase: 1,
   splitterSpawnTargetRamp: 0.05,
   splitterSpawnTargetMax: 8,
 
-  // === Mites（分裂怪死後產生的小蟲） ===
+  // === Splitter Bomb（死亡 / 撞水晶時拋出 3 顆）===
+  maxSplitterBombs: 96,
+  splitterBombCount: 3,
+  splitterBombSpeed: 7.2,           // 初速（線性減速）
+  splitterBombDecel: 5.5,           // 減速度 u/s²，會在 ~1.3s 完全停下
+  splitterBombFuse: 1.2,            // 引信時間（秒）
+  splitterBombRadius: 0.28,         // 視覺 / 飛行碰撞半徑
+  splitterBombExplosionRadius: 2.8, // 爆炸 AoE 半徑
+  splitterBombHeroDamage: 22,       // 玩家被炸一發扣的血
+  splitterBombCrystalDamage: 30,    // 水晶被炸一發扣的血
+
+  // === Mites（小蟲，2026-05-22：脫離 Splitter，獨立 spawn）===
+  // 原為 Splitter 死後產物，現改為類似 Slinger 的獨立 ramp schedule
   maxMites: 256,
-  mitesPerSplitter: 3,
   mitesSpeed: 5.6,
   mitesHp: 12,
   mitesRadius: 0.22,
   mitesXp: 1,
   mitesPushForce: 1.4,         // 撞到英雄推幾單位（朝水晶方向）
+  mitesStartTime: 70,          // 2026-05-22：提前到 70s 讓同框變化更早
+  mitesSpawnInterval: 5.0,
+  mitesSpawnBurst: 4,          // 一波 4 隻（小蟲群聚感）
+  mitesTargetMax: 32,
+  mitesTargetRamp: 0.15,
+
+  // === Sentinel（哨衛 — 慢速高 HP tank，2026-05-22 新增）===
+  // 設計：玩家必須投入時間 + 多次脈衝才能擊破，否則撞水晶就是一大坨傷害
+  maxSentinels: 16,
+  sentinelSpeed: 1.6,
+  sentinelHp: 480,
+  sentinelDamage: 55,          // 撞水晶傷害（高，但數量稀少）
+  sentinelRadius: 1.3,
+  sentinelXp: 28,
+  sentinelStartTime: 95,       // 2026-05-22：提前 25s
+  sentinelSpawnInterval: 12,
+  sentinelTargetMax: 4,
+  sentinelTargetRamp: 0.015,
+
+  // === Wraith（鬼影 — 短距 blink 騷擾型，2026-05-22 新增）===
+  // 設計：平時緩慢漂移，每 N 秒朝 hero 瞬移；逼玩家保持移動 + 視野警覺
+  maxWraiths: 40,
+  wraithDriftSpeed: 1.4,       // 平時漂移速度（明顯比 leech 慢）
+  wraithBlinkInterval: 2.8,    // 兩次 blink 之間的冷卻
+  wraithBlinkDistance: 4.8,    // 朝 hero 方向瞬移距離
+  wraithBlinkTelegraph: 0.45,  // blink 前的視覺預警時間（給玩家反應）
+  wraithHp: 26,
+  wraithRadius: 0.4,
+  wraithXp: 8,
+  wraithStartTime: 55,         // 2026-05-22：提前 25s
+  wraithSpawnInterval: 6.0,
+  wraithSpawnBurst: 1,
+  wraithTargetMax: 8,
+  wraithTargetRamp: 0.06,
+
+  // === Lancer（突刺兵 — 蓄力後直線衝刺，2026-05-22 新增）===
+  // 設計：走→蓄力（紅線預警）→ 直線衝刺 12u → 冷卻；玩家需 dash 預判躲開
+  maxLancers: 32,
+  lancerWalkSpeed: 2.8,
+  lancerHp: 60,
+  lancerRadius: 0.5,
+  lancerXp: 9,
+  lancerWindupDuration: 0.6,    // 蓄力時間（紅色預警線）
+  lancerChargeSpeed: 16,        // 衝刺中的瞬間速度
+  lancerChargeDuration: 0.45,   // 衝刺持續時間（× speed ≈ 7.2u 位移）
+  lancerCooldown: 1.8,          // 衝完之後的冷卻
+  lancerWalkRange: 14,          // 進入此距離開始考慮蓄力（外圍不蓄）
+  lancerStartTime: 40,
+  lancerSpawnInterval: 5.0,
+  lancerSpawnBurst: 1,
+  lancerTargetMax: 6,
+  lancerTargetRamp: 0.04,
+
+  // === Conduit（導體 — Buff support，2026-05-22 新增）===
+  // 設計：慢漂、低 HP，但活著時所有其他怪 +25% 速度。優先擊破不然其他怪變猛
+  maxConduits: 8,
+  conduitSpeed: 1.5,
+  conduitHp: 75,
+  conduitRadius: 0.55,
+  conduitXp: 18,
+  conduitBuffSpeedMult: 1.25,   // 活著時其他怪的速度倍率
+  conduitAuraRadius: 6,          // 視覺光環（不影響邏輯，目前 buff 是全圖）
+  conduitStartTime: 75,
+  conduitSpawnInterval: 14,
+  conduitTargetMax: 3,
+  conduitTargetRamp: 0.012,
+
+  // === Mire（沼 — 走路掉落減速地形，2026-05-22 新增）===
+  // 設計：sluggish 中型怪，每 N 秒在腳下生成減速 patch；hero 走進 patch 速度 -40%
+  maxMires: 16,
+  mireSpeed: 2.0,
+  mireHp: 110,
+  mireRadius: 0.7,
+  mireXp: 14,
+  mirePatchDropInterval: 1.5,
+  mirePatchLifetime: 6.0,
+  mirePatchRadius: 1.4,
+  mireSlowFactor: 0.4,           // hero 在 patch 內 movement × (1 - 0.4) = 60%
+  maxMirePatches: 96,
+  mireStartTime: 110,
+  mireSpawnInterval: 9,
+  mireTargetMax: 5,
+  mireTargetRamp: 0.025,
 
   // === Boss Ohm（2026-05-21 完全重設計：光束 + 順移切繫帶 + 自爆狂暴）===
   bossSpawnLevel: 15,

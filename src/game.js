@@ -7,7 +7,12 @@ import { Hero } from './hero.js';
 import { Crystal } from './crystal.js';
 import { Swarm } from './enemies.js';
 import { Slingers, BulletPool } from './slinger.js';
-import { Splitters, Mites } from './splitter.js';
+import { Splitters, Mites, SplitterBombs } from './splitter.js';
+import { Sentinels } from './sentinel.js';
+import { Wraiths } from './wraith.js';
+import { Lancers } from './lancer.js';
+import { Conduits } from './conduit.js';
+import { Mires, MirePatchPool } from './mire.js';
 import { Boss } from './boss.js';
 import { Nexus } from './nexus.js';
 import { Chronos } from './chronos.js';
@@ -80,6 +85,13 @@ export class Game {
     this.bullets = new BulletPool(this.scene, CONFIG.maxBullets);
     this.splitters = new Splitters(this.scene, CONFIG.maxSplitters);
     this.mites = new Mites(this.scene, CONFIG.maxMites);
+    this.bombs = new SplitterBombs(this.scene, CONFIG.maxSplitterBombs);
+    this.sentinels = new Sentinels(this.scene, CONFIG.maxSentinels);
+    this.wraiths = new Wraiths(this.scene, CONFIG.maxWraiths);
+    this.lancers = new Lancers(this.scene, CONFIG.maxLancers);
+    this.conduits = new Conduits(this.scene, CONFIG.maxConduits);
+    this.mirePatches = new MirePatchPool(this.scene, CONFIG.maxMirePatches);
+    this.mires = new Mires(this.scene, CONFIG.maxMires, this.mirePatches);
     this.boss = new Boss(this.scene);
     this.nexus = new Nexus(this.scene);
     this.chronos = new Chronos(this.scene);     // W6
@@ -169,6 +181,12 @@ export class Game {
     this.spawnTimer = 0;
     this.slingerSpawnTimer = 0;
     this.splitterSpawnTimer = 0;
+    this.mitesSpawnTimer = 0;
+    this.sentinelSpawnTimer = 0;
+    this.wraithSpawnTimer = 0;
+    this.lancerSpawnTimer = 0;
+    this.conduitSpawnTimer = 0;
+    this.mireSpawnTimer = 0;
     this.bossSpawned = false;
     this.bossWarningShown = false;
     this._bossWarningStartElapsed = 0;       // Level-Gated 倒數起點
@@ -217,9 +235,14 @@ export class Game {
     this._camTarget = new THREE.Vector3();
     this._camLook = new THREE.Vector3();
 
-    // B11 + W4 + W6: 預先 hoist 成員陣列
-    this._allSwarmsArr = [this.swarm, this.slingers, this.splitters, this.mites, this.boss, this.nexus, this.chronos, this.mu];
-    this._allHashesArr = [this.hash, this.slingers.hash, this.splitters.hash, this.mites.hash, this.boss.hash, this.nexus.hash, this.chronos.hash, this.mu.hash];
+    // B11 + W4 + W6 + 2026-05-22 新怪：預先 hoist 成員陣列
+    // 注意：bombs / mirePatches 不在內 — 不是 enemy，玩家脈衝/dash 不該打到它們
+    this._allSwarmsArr = [this.swarm, this.slingers, this.splitters, this.mites, this.sentinels, this.wraiths,
+      this.lancers, this.conduits, this.mires,
+      this.boss, this.nexus, this.chronos, this.mu];
+    this._allHashesArr = [this.hash, this.slingers.hash, this.splitters.hash, this.mites.hash, this.sentinels.hash, this.wraiths.hash,
+      this.lancers.hash, this.conduits.hash, this.mires.hash,
+      this.boss.hash, this.nexus.hash, this.chronos.hash, this.mu.hash];
 
     // W4: Nexus 召喚旗
     this.nexusSpawned = false;
@@ -441,10 +464,35 @@ export class Game {
 
     // === Enemy update ===
     // W5: enemyDt 給敵人類使用（子彈時間下降速）
-    this.swarm.update(enemyDt, this.crystal.position.x, this.crystal.position.z, this.hash);
-    this.slingers.update(enemyDt, this.crystal.position.x, this.crystal.position.z, this.bullets, this.audio);
-    this.splitters.update(enemyDt, this.crystal.position.x, this.crystal.position.z);
-    this.mites.update(enemyDt, this.hero.position.x, this.hero.position.z);
+    // 2026-05-22 Conduit Buff：場上有任何 Conduit 存活 → 其他怪 × conduitBuffSpeedMult 速度
+    // 用 enemyDt 倍率實作 — Conduit 自己也吃一點 buff 但仍然慢，影響可忽略
+    const conduitBuff = this.conduits.activeCount > 0 ? CONFIG.conduitBuffSpeedMult : 1;
+    const buffedEnemyDt = enemyDt * conduitBuff;
+
+    this.swarm.update(buffedEnemyDt, this.crystal.position.x, this.crystal.position.z, this.hash);
+    this.slingers.update(buffedEnemyDt, this.crystal.position.x, this.crystal.position.z, this.bullets, this.audio);
+    this.splitters.update(buffedEnemyDt, this.crystal.position.x, this.crystal.position.z);
+    this.mites.update(buffedEnemyDt, this.hero.position.x, this.hero.position.z);
+    this.sentinels.update(buffedEnemyDt, this.crystal.position.x, this.crystal.position.z);
+    this.wraiths.update(buffedEnemyDt, this.hero.position.x, this.hero.position.z);
+
+    // Lancer：返回本幀 charge 撞到 hero 的 lancer index 陣列
+    const lancerHeroHits = this.lancers.update(buffedEnemyDt, this.hero.position.x, this.hero.position.z);
+    this.conduits.update(enemyDt, this.crystal.position.x, this.crystal.position.z);   // Conduit 不吃自己的 buff
+    this.mires.update(buffedEnemyDt, this.crystal.position.x, this.crystal.position.z);
+
+    // Lancer charge 撞 hero → 一次性大傷害（繞過 iframe 但 dash 期間免疫）
+    if (lancerHeroHits.length > 0 && !this.hero.invulnerable && this.hero.hp > 0) {
+      this.hero.takeDamage(CONFIG.heroTouchDamage);
+      this.effects.addTrauma(0.15);
+      this.effects.addChroma(0.02);
+      this.audio.playTake();
+    }
+
+    // Mire 沼澤地形：每幀更新 + 設 hero 減速倍率
+    this.mirePatches.update(rawDtSec);
+    this.hero.mireSlowFactor = this.mirePatches.isInsideAny(this.hero.position.x, this.hero.position.z)
+      ? CONFIG.mireSlowFactor : 0;
     if (this.perks.massCollapse && this.hero.gravityWellActive) {
       this._applyGravityWell();
     }
@@ -565,7 +613,9 @@ export class Game {
         if (h.killed) this._onKill(h.swarm, h.x, h.z);
       }
     }
-    this.hero.clearDashTags(this.swarm, this.slingers, this.splitters, this.mites, this.boss, this.nexus, this.chronos, this.mu);
+    this.hero.clearDashTags(this.swarm, this.slingers, this.splitters, this.mites, this.sentinels, this.wraiths,
+      this.lancers, this.conduits, this.mires,
+      this.boss, this.nexus, this.chronos, this.mu);
 
     // W5 Kinetic Reversal: Dash 結束製造反相環
     if (this.hero.dashJustEnded && this.perks.kineticReversal) {
@@ -578,18 +628,23 @@ export class Game {
     // === 怪撞水晶 ===
     const leechHits = this.swarm.collectCrystalHits(this.crystal.position.x, this.crystal.position.z, CONFIG.crystalHitRange);
     const splitterHits = this.splitters.collectCrystalHits(this.crystal.position.x, this.crystal.position.z, CONFIG.crystalHitRange + 0.5);
-    if (leechHits.length > 0 || splitterHits.length > 0) {
-      const damage = (leechHits.length * CONFIG.leechDamage + splitterHits.length * CONFIG.splitterDamage) * this.tether.crystalVulnMult;
+    const sentinelHits = this.sentinels.collectCrystalHits(this.crystal.position.x, this.crystal.position.z, CONFIG.crystalHitRange + CONFIG.sentinelRadius);
+    if (leechHits.length > 0 || splitterHits.length > 0 || sentinelHits.length > 0) {
+      const damage = (leechHits.length * CONFIG.leechDamage
+        + splitterHits.length * CONFIG.splitterDamage
+        + sentinelHits.length * CONFIG.sentinelDamage) * this.tether.crystalVulnMult;
       this._damageCrystal(damage);
-      this.effects.addTrauma(0.08 + (leechHits.length + splitterHits.length) * 0.02);
+      const totalHits = leechHits.length + splitterHits.length + sentinelHits.length;
+      this.effects.addTrauma(0.08 + totalHits * 0.02);
       this.effects.addChroma(CONFIG.chromaticOnHit);
       this.audio.playCrystalHit();
       for (const i of leechHits) this.swarm.consumeAt(i);
       for (const i of splitterHits) {
-        // Splitter 撞水晶死也算死，照樣分裂（更狠！）
+        // Splitter 撞水晶死照常觸發爆炸（雙重威脅：撞傷 + 炸傷）
         this.splitters.deathQueue.push({ x: this.splitters.pos[i*3+0], z: this.splitters.pos[i*3+2] });
         this.splitters.consumeAt(i);
       }
+      for (const i of sentinelHits) this.sentinels.consumeAt(i);
     }
 
     // === 子彈 → 水晶（W5: 子彈時間也讓子彈變慢） ===
@@ -601,17 +656,26 @@ export class Game {
       this.audio.playCrystalHit();
     }
 
-    // === Splitter 死亡 → spawn mites（B3: 移到所有死亡來源之後、syncInstances 之前） ===
+    // === Splitter 死亡 → spawn bombs（2026-05-22 重做：mites → 引信炸彈）===
     const deathPositions = this.splitters.consumeDeathQueue();
     for (const p of deathPositions) {
-      this.mites.spawnFrom(p.x, p.z, CONFIG.mitesPerSplitter);
+      this.bombs.spawnFrom(p.x, p.z, CONFIG.splitterBombCount);
     }
+
+    // === Bombs 推進 + 引信到 → 爆炸 AoE 同時對 hero + crystal 結算傷害 ===
+    const bombEvents = this.bombs.update(enemyDt);
+    if (bombEvents.length > 0) this._processBombExplosions(bombEvents);
 
     // === Sync GPU ===
     this.swarm.syncInstances();
     this.slingers.syncInstances();
     this.splitters.syncInstances(now);
     this.mites.syncInstances(now);
+    this.sentinels.syncInstances(now);
+    this.wraiths.syncInstances(now);
+    this.lancers.syncInstances();
+    this.conduits.syncInstances(now);
+    this.mires.syncInstances(now);
 
     // === Souls + 護盾累積 ===
     const arrived = this.tether.updateSouls(dt, this.crystal, this.hero, this.perks);
@@ -634,6 +698,8 @@ export class Game {
     // W4 + W6: 環境音 + Kick 動態
     const totalEnemies = this.swarm.activeCount + this.slingers.activeCount
       + this.splitters.activeCount + this.mites.activeCount
+      + this.sentinels.activeCount + this.wraiths.activeCount
+      + this.lancers.activeCount + this.conduits.activeCount + this.mires.activeCount
       + (this.boss.alive[0] ? 1 : 0) + (this.nexus.alive[0] ? 1 : 0)
       + (this.chronos.alive[0] ? 1 : 0);
     this._lastEnemyCount = totalEnemies;
@@ -680,6 +746,11 @@ export class Game {
       if (this.input.wasPressed('KeyN')) this._gainXP(this.xpToNext);
       if (this.input.wasPressed('KeyV')) this.slingers.spawnBurst(3, CONFIG.spawnRingRadiusMin, CONFIG.spawnRingRadiusMax);
       if (this.input.wasPressed('KeyC')) this.splitters.spawnBurst(3, CONFIG.spawnRingRadiusMin, CONFIG.spawnRingRadiusMax);
+      if (this.input.wasPressed('KeyG')) this.sentinels.spawnBurst(2, CONFIG.spawnRingRadiusMin, CONFIG.spawnRingRadiusMax);
+      if (this.input.wasPressed('KeyH')) this.wraiths.spawnBurst(5, CONFIG.spawnRingRadiusMin, CONFIG.spawnRingRadiusMax);
+      if (this.input.wasPressed('KeyK')) this.lancers.spawnBurst(3, CONFIG.spawnRingRadiusMin, CONFIG.spawnRingRadiusMax);
+      if (this.input.wasPressed('KeyL')) this.conduits.spawnBurst(2, CONFIG.spawnRingRadiusMin + 4, CONFIG.spawnRingRadiusMax + 4);
+      if (this.input.wasPressed('KeyU')) this.mires.spawnBurst(2, CONFIG.spawnRingRadiusMin, CONFIG.spawnRingRadiusMax);
       if (this.input.wasPressed('KeyJ') && !this.boss.alive[0]) {
         this.boss.spawn(this.crystal);
         this.bossSpawned = true;
@@ -816,6 +887,99 @@ export class Game {
             this._splitterTutorialFired = true;
             this.tutorial.trigger('splitter');
           }
+        }
+      }
+    }
+
+    // Wraith — 鬼影 blink 騷擾型（第一局關閉）
+    if (!this.isFirstRun && this.elapsed >= CONFIG.wraithStartTime) {
+      this.wraithSpawnTimer -= rawDt;
+      if (this.wraithSpawnTimer <= 0) {
+        this.wraithSpawnTimer = CONFIG.wraithSpawnInterval;
+        const target = Math.min(
+          CONFIG.wraithTargetMax,
+          1 + Math.floor((this.elapsed - CONFIG.wraithStartTime) * CONFIG.wraithTargetRamp)
+        );
+        if (this.wraiths.activeCount < target) {
+          this.wraiths.spawnBurst(CONFIG.wraithSpawnBurst, CONFIG.spawnRingRadiusMin + 2, CONFIG.spawnRingRadiusMax);
+        }
+      }
+    }
+
+    // Mites — 獨立 spawn（第一局關閉；舊版靠 Splitter 死後產生，現脫鉤）
+    if (!this.isFirstRun && this.elapsed >= CONFIG.mitesStartTime) {
+      this.mitesSpawnTimer -= rawDt;
+      if (this.mitesSpawnTimer <= 0) {
+        this.mitesSpawnTimer = CONFIG.mitesSpawnInterval;
+        const target = Math.min(
+          CONFIG.mitesTargetMax,
+          CONFIG.mitesSpawnBurst + Math.floor((this.elapsed - CONFIG.mitesStartTime) * CONFIG.mitesTargetRamp)
+        );
+        if (this.mites.activeCount < target) {
+          // mites 群聚感：以一個隨機點為中心爆散
+          const a = Math.random() * Math.PI * 2;
+          const r = CONFIG.spawnRingRadiusMin + Math.random() * (CONFIG.spawnRingRadiusMax - CONFIG.spawnRingRadiusMin);
+          this.mites.spawnFrom(Math.cos(a) * r, Math.sin(a) * r, CONFIG.mitesSpawnBurst);
+        }
+      }
+    }
+
+    // Sentinel — 慢速高 HP tank（第一局關閉）
+    if (!this.isFirstRun && this.elapsed >= CONFIG.sentinelStartTime) {
+      this.sentinelSpawnTimer -= rawDt;
+      if (this.sentinelSpawnTimer <= 0) {
+        this.sentinelSpawnTimer = CONFIG.sentinelSpawnInterval;
+        const target = Math.min(
+          CONFIG.sentinelTargetMax,
+          1 + Math.floor((this.elapsed - CONFIG.sentinelStartTime) * CONFIG.sentinelTargetRamp)
+        );
+        if (this.sentinels.activeCount < target) {
+          this.sentinels.spawnBurst(1, CONFIG.spawnRingRadiusMin + 4, CONFIG.spawnRingRadiusMax + 4);
+        }
+      }
+    }
+
+    // Lancer — 蓄力衝刺型（第一局關閉）
+    if (!this.isFirstRun && this.elapsed >= CONFIG.lancerStartTime) {
+      this.lancerSpawnTimer -= rawDt;
+      if (this.lancerSpawnTimer <= 0) {
+        this.lancerSpawnTimer = CONFIG.lancerSpawnInterval;
+        const target = Math.min(
+          CONFIG.lancerTargetMax,
+          1 + Math.floor((this.elapsed - CONFIG.lancerStartTime) * CONFIG.lancerTargetRamp)
+        );
+        if (this.lancers.activeCount < target) {
+          this.lancers.spawnBurst(CONFIG.lancerSpawnBurst, CONFIG.spawnRingRadiusMin + 2, CONFIG.spawnRingRadiusMax);
+        }
+      }
+    }
+
+    // Conduit — buff support（第一局關閉，數量限制較嚴）
+    if (!this.isFirstRun && this.elapsed >= CONFIG.conduitStartTime) {
+      this.conduitSpawnTimer -= rawDt;
+      if (this.conduitSpawnTimer <= 0) {
+        this.conduitSpawnTimer = CONFIG.conduitSpawnInterval;
+        const target = Math.min(
+          CONFIG.conduitTargetMax,
+          1 + Math.floor((this.elapsed - CONFIG.conduitStartTime) * CONFIG.conduitTargetRamp)
+        );
+        if (this.conduits.activeCount < target) {
+          this.conduits.spawnBurst(1, CONFIG.spawnRingRadiusMin + 6, CONFIG.spawnRingRadiusMax + 6);
+        }
+      }
+    }
+
+    // Mire — 沼澤地形危險（第一局關閉）
+    if (!this.isFirstRun && this.elapsed >= CONFIG.mireStartTime) {
+      this.mireSpawnTimer -= rawDt;
+      if (this.mireSpawnTimer <= 0) {
+        this.mireSpawnTimer = CONFIG.mireSpawnInterval;
+        const target = Math.min(
+          CONFIG.mireTargetMax,
+          1 + Math.floor((this.elapsed - CONFIG.mireStartTime) * CONFIG.mireTargetRamp)
+        );
+        if (this.mires.activeCount < target) {
+          this.mires.spawnBurst(1, CONFIG.spawnRingRadiusMin, CONFIG.spawnRingRadiusMax);
         }
       }
     }
@@ -999,6 +1163,11 @@ export class Game {
       [this.swarm, CONFIG.leechRadius, this.hash],
       [this.slingers, slingerR, this.slingers.hash],
       [this.splitters, CONFIG.splitterRadius, this.splitters.hash],
+      [this.sentinels, CONFIG.sentinelRadius, this.sentinels.hash],
+      [this.wraiths, CONFIG.wraithRadius, this.wraiths.hash],
+      // Lancer 不在這 — 它的 charge 期 hit 由 lancers.update() 自行返回；非 charge 不傷 hero（design）
+      [this.conduits, CONFIG.conduitRadius, this.conduits.hash],
+      [this.mires, CONFIG.mireRadius, this.mires.hash],
       [this.boss, CONFIG.bossRadius, this.boss.hash],
       [this.nexus, CONFIG.nexusRadius, this.nexus.hash],
       [this.chronos, CONFIG.chronosRadius, this.chronos.hash],
@@ -1023,6 +1192,46 @@ export class Game {
         }
       }
     }
+  }
+
+  /**
+   * 2026-05-22：Splitter 炸彈引信到 → AoE 同時對 hero + crystal 結算傷害
+   * 視覺：橘紅大環 + trauma + chroma；音效：playTetherSnap（沿用爆炸感）
+   */
+  _processBombExplosions(events) {
+    const radius = CONFIG.splitterBombExplosionRadius;
+    const r2 = radius * radius;
+    const heroDmg = CONFIG.splitterBombHeroDamage;
+    const crystalDmg = CONFIG.splitterBombCrystalDamage;
+    const cx = this.crystal.position.x, cz = this.crystal.position.z;
+    const hx = this.hero.position.x, hz = this.hero.position.z;
+
+    for (const ev of events) {
+      this.hero.spawnPulseRing(ev.x, ev.z, radius, 0xff5522, 0.95);
+      this.effects.addTrauma(0.18);
+      this.effects.addChroma(0.015);
+
+      // 水晶在爆炸範圍內 → crystal damage
+      {
+        const dx = cx - ev.x, dz = cz - ev.z;
+        if (dx*dx + dz*dz < (radius + CONFIG.crystalRadius) * (radius + CONFIG.crystalRadius)) {
+          this._damageCrystal(crystalDmg * this.tether.crystalVulnMult);
+          this.crystal.hitFlash = Math.max(this.crystal.hitFlash, 0.22);
+        }
+      }
+
+      // Hero 在爆炸範圍內 → hero damage（dash 無敵期間自動吸收於 takeDamage iframe）
+      {
+        const dx = hx - ev.x, dz = hz - ev.z;
+        if (dx*dx + dz*dz < r2) {
+          if (this.hero.hp > 0 && !this.hero.invulnerable) {
+            this.hero.takeDamage(heroDmg);
+            this.effects.addTrauma(0.12);
+          }
+        }
+      }
+    }
+    this.audio.playTetherSnap();
   }
 
   /** W5 動能逆轉：環內敵人朝水晶外推 + 立即傷害 50 */
@@ -1150,7 +1359,10 @@ export class Game {
     this.ui.tether.textContent = (this.tether.severed ? '✕ ' : '') + '×' + this.tether.heroDmgMult.toFixed(2);
     this.ui.kills.textContent = this.kills;
     this.ui.time.textContent = this.elapsed.toFixed(0) + 's';
-    const totalEnemies = this.swarm.activeCount + this.slingers.activeCount + this.splitters.activeCount + this.mites.activeCount + (this.boss.alive[0] ? 1 : 0);
+    const totalEnemies = this.swarm.activeCount + this.slingers.activeCount + this.splitters.activeCount + this.mites.activeCount
+      + this.sentinels.activeCount + this.wraiths.activeCount
+      + this.lancers.activeCount + this.conduits.activeCount + this.mires.activeCount
+      + (this.boss.alive[0] ? 1 : 0);
     this.ui.enemyCount.textContent = totalEnemies;
     this.ui.soulCount.textContent = this.tether.soulCount;
     this.ui.bulletCount.textContent = this.bullets.activeCount;
@@ -1454,7 +1666,7 @@ export class Game {
     // 用 hero 的 pulse ring 池畫一個大藍環在水晶位置
     this.hero.spawnPulseRing(cx, cz, r, 0x66ccff, 1.0);
 
-    for (const sw of [this.swarm, this.slingers, this.splitters, this.mites]) {
+    for (const sw of [this.swarm, this.slingers, this.splitters, this.mites, this.sentinels, this.wraiths, this.lancers, this.conduits, this.mires]) {
       for (let i = 0; i < sw.maxCount; i++) {
         if (!sw.alive[i]) continue;
         const dx = sw.pos[i*3+0] - cx;

@@ -138,8 +138,13 @@ function showBootMenu() {
   }
 }
 
+// dev iteration：?nointro=1 URL 參數略過開場動畫（每次 reload 都重看 intro 太煩）
+const skipIntroFlag = new URLSearchParams(location.search).has('nointro');
+
 if (botCfg) {
   // bot 模式跳過 boot menu 與 intro，直接開新局
+  startGame(null);
+} else if (skipIntroFlag) {
   startGame(null);
 } else if (hasAnySlot()) {
   showBootMenu();

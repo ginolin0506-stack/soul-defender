@@ -300,7 +300,12 @@ export function installBotHooks(game, cfg) {
       const totalEnemies = game.swarm.activeCount
         + game.slingers.activeCount
         + game.splitters.activeCount
-        + game.mites.activeCount;
+        + game.mites.activeCount
+        + game.sentinels.activeCount
+        + game.wraiths.activeCount
+        + game.lancers.activeCount
+        + game.conduits.activeCount
+        + game.mires.activeCount;
       tel.samples.push({
         t: +game.elapsed.toFixed(1),
         kills: game.kills,

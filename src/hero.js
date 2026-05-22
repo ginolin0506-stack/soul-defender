@@ -105,12 +105,17 @@ export class Hero {
     this.stationaryTime = 0;
     this.gravityWellActive = false;
 
+    // 2026-05-22 Mire patches：游 hero 走進沼澤時的減速倍率（0 = 不減速，0.4 = 60% 速度）
+    this.mireSlowFactor = 0;
+
     this._tmpMove = new THREE.Vector3();
   }
 
   update(dt, input) {
     input.getMoveVec(this._tmpMove);
-    const speed = CONFIG.heroSpeed * (this.perks?.heroSpeedMult || 1);
+    // 沼澤減速：dash 期間免疫（位移工具應該突破地形）
+    const slowMult = (this.dashTimer > 0) ? 1 : (1 - this.mireSlowFactor);
+    const speed = CONFIG.heroSpeed * (this.perks?.heroSpeedMult || 1) * slowMult;
 
     this.dashJustEnded = false;
     this.dashJustTriggered = false;
