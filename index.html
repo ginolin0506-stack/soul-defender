@@ -848,6 +848,50 @@
     }
 
     /* === Perk Overlay === */
+    /* === 暫停 overlay（玩家按 P 觸發） === */
+    #pause-overlay {
+      position: fixed; inset: 0;
+      display: none;
+      align-items: center; justify-content: center;
+      flex-direction: column;
+      background: radial-gradient(ellipse at center, rgba(20,20,60,0.55), rgba(0,0,0,0.78));
+      backdrop-filter: blur(6px) saturate(120%);
+      -webkit-backdrop-filter: blur(6px) saturate(120%);
+      z-index: 18;
+      pointer-events: none;
+    }
+    #pause-overlay.show {
+      display: flex;
+      animation: pause-fade-in 0.22s cubic-bezier(.2,.8,.2,1) both;
+    }
+    @keyframes pause-fade-in {
+      from { opacity: 0; }
+      to   { opacity: 1; }
+    }
+    .pause-title {
+      font-size: 64px; font-weight: 600;
+      letter-spacing: 22px; padding-left: 22px;
+      color: #f0e8ff;
+      text-shadow: 0 0 28px rgba(178,102,255,0.55), 0 0 6px rgba(255,255,255,0.6);
+      margin-bottom: 18px;
+      animation: pause-pulse 2.4s ease-in-out infinite;
+    }
+    @keyframes pause-pulse {
+      0%, 100% { opacity: 0.88; text-shadow: 0 0 22px rgba(178,102,255,0.45); }
+      50%      { opacity: 1;    text-shadow: 0 0 40px rgba(178,102,255,0.88); }
+    }
+    .pause-sub {
+      font-size: 12px; letter-spacing: 5px;
+      color: #66ffd9; opacity: 0.78;
+    }
+    .pause-sub kbd {
+      display: inline-block; padding: 1px 8px; margin: 0 3px;
+      border: 1px solid rgba(255,255,255,0.4);
+      border-radius: 3px; background: rgba(255,255,255,0.06);
+      font-family: ui-monospace, Consolas, monospace; font-size: 12px;
+      color: #fff;
+    }
+
     #perk-overlay {
       position: fixed; inset: 0;
       display: none;
@@ -1008,7 +1052,7 @@
     <kbd>WASD</kbd> 移動　<kbd>Space</kbd> Dash<br>
     <kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> 選擇升級天賦<br>
     <span class="debug-only"><kbd>B</kbd> Leech 100　<kbd>V</kbd> Slinger　<kbd>C</kbd> Splitter　<kbd>J</kbd> Boss<br>
-    <kbd>N</kbd> 強升　</span><kbd>M</kbd> 靜音　<kbd>R</kbd> 重開
+    <kbd>N</kbd> 強升　</span><kbd>P</kbd> 暫停　<kbd>M</kbd> 靜音　<kbd>R</kbd> 重開
   </div>
 
   <div id="title">靈魂防線 · SOUL DEFENDER · PROTOTYPE W3</div>
@@ -1016,6 +1060,11 @@
   <div id="damage-layer"></div>
 
   <div id="tutorial-toast"><span id="tutorial-text"></span></div>
+
+  <div id="pause-overlay">
+    <div class="pause-title">暫停</div>
+    <div class="pause-sub">再按 <kbd>P</kbd> 繼續　·　<kbd>M</kbd> 靜音　·　<kbd>R</kbd> 重開</div>
+  </div>
 
   <div id="perk-overlay">
     <div class="perk-title">水晶共鳴</div>

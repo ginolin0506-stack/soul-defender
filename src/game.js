@@ -161,7 +161,9 @@ export class Game {
     this.elapsed = 0;
     this.kills = 0;
     this.gameOver = false;
-    this.paused = false;
+    this.paused = false;          // perk overlay 顯示時用
+    this.userPaused = false;      // 玩家按 P 主動暫停（與 perk overlay 互斥）
+    this.pauseOverlay = document.getElementById('pause-overlay');
     this.audioStarted = false;
 
     this.spawnTimer = 0;
@@ -303,7 +305,15 @@ export class Game {
     if (this.input.wasPressed('KeyR')) { location.reload(); return; }
     if (this.input.wasPressed('KeyM')) this.audio.setMute(!this.audio.muted);
 
-    if (this.gameOver || this.paused) {
+    // 暫停切換：perk overlay 開啟中（this.paused）或 gameOver 時鎖定，避免吃掉決策狀態
+    if (this.input.wasPressed('KeyP') && !this.gameOver && !this.paused) {
+      this.userPaused = !this.userPaused;
+      if (this.pauseOverlay) this.pauseOverlay.classList.toggle('show', this.userPaused);
+      if (this.userPaused) this.audio.suspend();
+      else this.audio.resume();
+    }
+
+    if (this.gameOver || this.paused || this.userPaused) {
       this.renderer.render(this.scene, this.camera);
       return;
     }

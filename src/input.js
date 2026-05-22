@@ -3,6 +3,7 @@ const GAME_KEYS = new Set([
   'KeyW', 'KeyA', 'KeyS', 'KeyD',
   'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight',
   'Space',
+  'KeyP',                                   // 暫停（隨時可按）
   'KeyB', 'KeyV', 'KeyC', 'KeyJ', 'KeyN',   // debug spawn keys
   'Digit1', 'Digit2', 'Digit3',
   'Numpad1', 'Numpad2', 'Numpad3',

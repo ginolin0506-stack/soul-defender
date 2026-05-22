@@ -42,6 +42,10 @@ export class AudioMgr {
     if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume();
   }
 
+  suspend() {
+    if (this.ctx && this.ctx.state === 'running') this.ctx.suspend();
+  }
+
   setMute(m) {
     this.muted = m;
     if (this.master) this.master.gain.value = m ? 0 : this.masterVol;

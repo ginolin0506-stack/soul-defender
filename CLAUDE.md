@@ -8,18 +8,26 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Running
 
-There is no build step, no `package.json`, no test framework. Three.js is loaded from a CDN via importmap (`index.html:863`).
+There is no build step, no `package.json` at the project root, no test framework. Three.js is loaded from a CDN via importmap (`index.html:960`).
 
 - **Local dev**: double-click `start.bat` — tries Python (`python -m http.server 8080`), then `py`, then Node (`npx http-server`). Opens `http://localhost:8080/` automatically.
 - **Deploy**: any static host. Cloudflare Pages is the production target (see `reference_cloudflare_deploy.md` in user memory for the GitHub → CF Pages pipeline).
 - Since modules are loaded via fetch, opening `index.html` directly with `file://` will fail — always go through the local server.
 
+### Balance simulation (separate from the game)
+
+`tools/` is the **only** part of the repo with a `package.json` and Node deps (Puppeteer). It runs the game headlessly with bot mode for balance telemetry and is **not** shipped to production.
+
+- `cd tools && npm install` once, then `npm run sim` (or `node balance-sim.mjs [runs] [speed] [maxSec] [parallel] [easy] [bonusPerks]`).
+- Output JSON + summary goes to `tools/sim-output/`. Findings are written up in `tools/BALANCE-FINDINGS.md` / `BALANCE-FIX-RESULTS.md`.
+- Driven by URL params on the actual game: `?bot=1` enables the bot AI, `?headless=1` swaps RAF for `setTimeout`, `?speed=N` (cap 4) fast-forwards. All bot params are **localhost-gated** (`bot.js:38-47`) — cloud visitors hitting `?bot=1` get a console warning and nothing else.
+
 ## Debug shortcuts (in-game)
 
-These are wired up in `input.js` and consumed in `game.js`. They are intentionally in production builds — useful when reproducing reported bugs:
+Wired up in `input.js` and consumed in `game.js`. The spawn/level-up keys are **localhost-gated** (`game.js:31-32`, `game.js:666`) — cloud-deployed builds silently drop them so players can't break their own run:
 
-- `B` spawn 100 leech · `V` spawn slinger · `C` spawn splitter · `J` spawn boss · `N` force level-up
-- `R` restart · `M` mute · `1`/`2`/`3` choose perk on level-up overlay
+- `B` spawn 100 leech · `V` spawn slinger · `C` spawn splitter · `J` spawn boss · `N` force level-up — **localhost only**
+- `R` restart · `M` mute · `1`/`2`/`3` choose perk on level-up overlay — always available
 
 The HUD `#help` block in `index.html` lists these for the user.
 
@@ -33,9 +41,11 @@ The HUD `#help` block in `index.html` lists these for the user.
 
 ### The Game orchestrator
 
-`src/game.js` owns the RAF loop and every subsystem. The constructor wires up: input, audio, meta (save state), hero, crystal, four enemy pools (`Swarm`/`Slingers`/`Splitters`/`Mites`), four boss controllers (`Boss`/`Nexus`/`Chronos`/`Mu`), `Tether`, `Effects`, `SpatialHash`, `PerkUI`, `Tutorial`. Per-frame logic lives in `_tickInner`; the outer `_tick` wraps it in try/catch so a single thrown frame can't freeze the RAF loop (intentional — see `game.js:205`).
+`src/game.js` owns the RAF loop and every subsystem. The constructor wires up: input, audio, meta (save state), hero, crystal, four enemy pools (`Swarm`/`Slingers`/`Splitters`/`Mites`), four boss controllers (`Boss` = Ohm / `Nexus` / `Chronos` / `Mu`), `Tether`, `Effects`, `SpatialHash`, `PerkUI`, `Tutorial`. Per-frame logic lives in `_tickInner`; the outer `_tick` wraps it in try/catch so a single thrown frame can't freeze the RAF loop (intentional — see `game.js:205`).
 
 `this._allSwarmsArr` and `this._allHashesArr` are hoisted once at construction to avoid per-frame allocation. Add new enemy types to **both** arrays.
+
+When `?bot=1` is on the URL, the constructor wraps the real `Input` in `BotInput` (`bot.js`) and `installBotHooks` rewires perk picks + tick scaling for autoplay. Bot mode forces `runs >= 1` (`game.js:70`) so the first-run protection doesn't suppress slingers/splitters/bosses during sim runs.
 
 ### Single source of truth: `config.js`
 
