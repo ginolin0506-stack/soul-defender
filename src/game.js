@@ -128,20 +128,6 @@ export class Game {
       }
     }
 
-    // 回鍋玩家補貼（非第一局）：開局自動套用 1 個防守型 perk
-    // 平衡測試 2026-05-21：非第一局裸跑 90% 死於 26-50s（中位 32.6s），
-    // 第一個 perk 還沒升到就被秒。送 1 個 perk 避免「回鍋就死」挫敗感
-    if (!this.isFirstRun && !this._botCfg) {
-      const defensives = ['aegis_charge', 'crystallize', 'bloom', 'swift_step'];
-      const pick = defensives[Math.floor(Math.random() * defensives.length)];
-      const p = PERKS[pick];
-      if (p) {
-        p.apply(this);
-        this.perks.taken.push(pick);
-        this.perkUI.renderActiveList(this.perks.taken, PERKS);
-      }
-    }
-
     // Bot 模式：bonusPerks=N → 自動套 N 個防守型 perk（模擬已升等玩家）
     if (this._botCfg && this._botCfg.bonusPerks > 0) {
       const order = ['aegis_charge', 'crystallize', 'bloom', 'swift_step', 'crystallize',
@@ -157,14 +143,7 @@ export class Game {
       this.perkUI.renderActiveList(this.perks.taken, PERKS);
     }
 
-    // 第一局保護
-    if (this.isFirstRun) {
-      this.crystal.maxHp += CONFIG.firstRunCrystalBonus;
-      this.crystal.hp = this.crystal.maxHp;
-      this.usedFirstRunSave = false;
-    } else {
-      this.usedFirstRunSave = true;
-    }
+    // 2026-05-22：取消第一局差異，所有局內容相同（保留 tutorial UI 為新手提示）
 
     this.xp = 0;
     this.level = 1;
@@ -760,26 +739,11 @@ export class Game {
 
     this._updateHUD();
 
-    // === 死亡判定（含第一局庇護 — 原子操作，同幀完成所有狀態切換） ===
+    // === 死亡判定 ===（2026-05-22 取消第一局庇護，所有局相同）
     const crystalDead = this.crystal.hp <= 0 && this.perks.shieldHp <= 0;
     const heroDead = this.hero.hp <= 0;
     if ((crystalDead || heroDead) && !this.gameOver) {
-      if (crystalDead && this.isFirstRun && !this.usedFirstRunSave) {
-        // R1+R2 修正：原子化 + 視覺強化（第一局庇護僅適用水晶死亡，hero 死亡直接結束）
-        this.usedFirstRunSave = true;
-        this.crystal.hp = 250;
-        this.hero.hp = this.hero.maxHp;     // 一併補滿英雄 HP，確保庇護後可繼續遊玩
-        this.crystal.hitFlash = 2.0;
-        this.effects.triggerHitStop(0.18);
-        this.effects.addTrauma(0.9);
-        this.effects.addChroma(0.06);
-        this.tutorial.trigger('save');
-        this.audio.playLevelUp();
-        this.audio.playTetherSnap();
-        this._triggerShieldNova();
-      } else {
-        this._endGame();
-      }
+      this._endGame();
     }
 
     this.renderer.render(this.scene, this.camera);
@@ -830,12 +794,9 @@ export class Game {
     // Leech
     this.spawnTimer -= rawDt;
     if (this.spawnTimer <= 0) {
-      // Gemini Onboarding：前 45 秒 spawn interval ×1.25（怪生產速度降 20%）
-      const intervalMult = this.elapsed < CONFIG.firstWaveSlowDuration
-        ? CONFIG.firstWaveIntervalMult : 1.0;
-      this.spawnTimer = CONFIG.spawnInterval * intervalMult;
+      this.spawnTimer = CONFIG.spawnInterval;
       // W5: 無盡模式提升 spawn target cap
-      const baseCap = this.isFirstRun ? CONFIG.firstRunEnemyCap : CONFIG.spawnTargetMax;
+      const baseCap = CONFIG.spawnTargetMax;
       const cap = this.endlessMode ? Math.floor(baseCap * CONFIG.endlessSpawnRampMult) : baseCap;
 
       // 玩家反饋：開局難度過高 → 前 earlyRampDuration 秒用 quadratic ease-in
@@ -855,8 +816,8 @@ export class Game {
       }
     }
 
-    // Slinger（第一局關閉）
-    if (!this.isFirstRun && this.elapsed >= CONFIG.slingerStartTime) {
+    // Slinger
+    if (this.elapsed >= CONFIG.slingerStartTime) {
       this.slingerSpawnTimer -= rawDt;
       if (this.slingerSpawnTimer <= 0) {
         this.slingerSpawnTimer = CONFIG.slingerSpawnInterval;
@@ -871,8 +832,8 @@ export class Game {
       }
     }
 
-    // Splitter（第一局關閉）
-    if (!this.isFirstRun && this.elapsed >= CONFIG.splitterStartTime) {
+    // Splitter
+    if (this.elapsed >= CONFIG.splitterStartTime) {
       this.splitterSpawnTimer -= rawDt;
       if (this.splitterSpawnTimer <= 0) {
         this.splitterSpawnTimer = CONFIG.splitterSpawnInterval;
@@ -891,8 +852,8 @@ export class Game {
       }
     }
 
-    // Wraith — 鬼影 blink 騷擾型（第一局關閉）
-    if (!this.isFirstRun && this.elapsed >= CONFIG.wraithStartTime) {
+    // Wraith — 鬼影 blink 騷擾型
+    if (this.elapsed >= CONFIG.wraithStartTime) {
       this.wraithSpawnTimer -= rawDt;
       if (this.wraithSpawnTimer <= 0) {
         this.wraithSpawnTimer = CONFIG.wraithSpawnInterval;
@@ -906,8 +867,8 @@ export class Game {
       }
     }
 
-    // Mites — 獨立 spawn（第一局關閉；舊版靠 Splitter 死後產生，現脫鉤）
-    if (!this.isFirstRun && this.elapsed >= CONFIG.mitesStartTime) {
+    // Mites — 獨立 spawn（舊版靠 Splitter 死後產生，現脫鉤）
+    if (this.elapsed >= CONFIG.mitesStartTime) {
       this.mitesSpawnTimer -= rawDt;
       if (this.mitesSpawnTimer <= 0) {
         this.mitesSpawnTimer = CONFIG.mitesSpawnInterval;
@@ -924,8 +885,8 @@ export class Game {
       }
     }
 
-    // Sentinel — 慢速高 HP tank（第一局關閉）
-    if (!this.isFirstRun && this.elapsed >= CONFIG.sentinelStartTime) {
+    // Sentinel — 慢速高 HP tank
+    if (this.elapsed >= CONFIG.sentinelStartTime) {
       this.sentinelSpawnTimer -= rawDt;
       if (this.sentinelSpawnTimer <= 0) {
         this.sentinelSpawnTimer = CONFIG.sentinelSpawnInterval;
@@ -939,8 +900,8 @@ export class Game {
       }
     }
 
-    // Lancer — 蓄力衝刺型（第一局關閉）
-    if (!this.isFirstRun && this.elapsed >= CONFIG.lancerStartTime) {
+    // Lancer — 蓄力衝刺型
+    if (this.elapsed >= CONFIG.lancerStartTime) {
       this.lancerSpawnTimer -= rawDt;
       if (this.lancerSpawnTimer <= 0) {
         this.lancerSpawnTimer = CONFIG.lancerSpawnInterval;
@@ -954,8 +915,8 @@ export class Game {
       }
     }
 
-    // Conduit — buff support（第一局關閉，數量限制較嚴）
-    if (!this.isFirstRun && this.elapsed >= CONFIG.conduitStartTime) {
+    // Conduit — buff support（數量限制較嚴）
+    if (this.elapsed >= CONFIG.conduitStartTime) {
       this.conduitSpawnTimer -= rawDt;
       if (this.conduitSpawnTimer <= 0) {
         this.conduitSpawnTimer = CONFIG.conduitSpawnInterval;
@@ -969,8 +930,8 @@ export class Game {
       }
     }
 
-    // Mire — 沼澤地形危險（第一局關閉）
-    if (!this.isFirstRun && this.elapsed >= CONFIG.mireStartTime) {
+    // Mire — 沼澤地形危險
+    if (this.elapsed >= CONFIG.mireStartTime) {
       this.mireSpawnTimer -= rawDt;
       if (this.mireSpawnTimer <= 0) {
         this.mireSpawnTimer = CONFIG.mireSpawnInterval;
@@ -1323,9 +1284,9 @@ export class Game {
     this.effects.addTrauma(0.3);
     this.paused = true;
     this.tutorial.trigger('levelup');
-    // Gemini Onboarding：第一局時把 isFirstRun 傳給 rollPerkChoices，加權防守型 perk
+    // 2026-05-22：移除第一局防守型 perk 加權，所有局選池一致
     // 傳完整 taken 列表（含重複），讓 rollPerkChoices 能正確算 stackable perk 的 maxStacks
-    const choices = rollPerkChoices(this.perks.taken, 3, this.isFirstRun);
+    const choices = rollPerkChoices(this.perks.taken, 3, false);
     // W6 Soul Imprint: 第一次升級保證烙印的天賦出現在三選一中
     // B21: 用「還沒拿過任何 perk」判定首升，避免一次升 2+ 級時誤判
     if (this.perks.taken.length === 0 && this.meta.imprintUnlocked && this.meta.imprinted) {
