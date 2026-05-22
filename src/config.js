@@ -348,9 +348,9 @@ export const CONFIG = {
 
   // === 生怪節奏 ===
   spawnInterval: 0.18,
-  spawnBurstBase: 2,           // 玩家反饋：開局太多怪，每波 burst 從 3 降到 2
+  spawnBurstBase: 1,           // 2026-05-22 玩家反饋：開局還是太多 → 2 降到 1
   spawnBurstRamp: 0.02,
-  spawnTargetBase: 12,         // 玩家反饋：開局壓力過大，從 80 降到 12
+  spawnTargetBase: 6,          // 2026-05-22 玩家反饋：開局還是太多 → 12 降到 6（早期人口減半）
   earlyRampDuration: 30,       // 前 30 秒 spawn ramp 用 quadratic ease-in，慢慢回到原本曲線
   spawnTargetRamp: 8,
   spawnTargetMax: 1100,
