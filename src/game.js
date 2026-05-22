@@ -42,20 +42,28 @@ export class Game {
 
     this.perks = {
       taken: [],
-      soulSkipHero: false,
       heroSpeedMult: 1.0,
       dashCooldownMult: 1.0,
       pulseRadiusMult: 1.0,
       critChanceBonus: 0,
-      critMultBonus: 0,
-      soulSpeedMult: 1.0,
       aegisStacks: 0,
       soulSinceShield: 0,
       shieldHp: 0,
       heroDmgGlobal: 1.0,        // W6: Glass Prism 倍率
       volatileLoop: false,       // W6: Volatile Loop flag
-      pierce: false,             // AoE 重整 2026-05-21
-      fangLunge: false,          // AoE 重整 2026-05-21
+      pierce: false,
+      pierceTimer: 0,            // 2026-05-22：穿刺劍氣 CD
+      soulVacuum: false,         // 2026-05-22：靈魂路徑緩速
+      hexStrikeOverload: false,  // 2026-05-22：瞬獄雷鳴
+    };
+
+    // === 瞬獄雷鳴 Hex Strike 狀態機 ===
+    this.hexStrike = {
+      state: 'idle',    // idle | locking | striking | done
+      cooldown: 0,      // > 0：尚未準備好
+      timer: 0,         // 當前狀態經過時間
+      targets: [],      // {pool, idx, x, z, hitAt} 鎖定的 6 個目標
+      effects: [],      // 視覺效果列表 {type:'lock'|'bolt', x, z, life, lifeMax}
     };
 
     const realInput = new Input();
@@ -99,6 +107,9 @@ export class Game {
     this.effects = new Effects(this.renderer, this.scene, this.camera);
     this.hash = new SpatialHash(CONFIG.hashCell);
     this.perkUI = new PerkUI();
+
+    // 瞬獄雷鳴視覺池（鎖定環 + 雷柱 各 N 個）
+    this._initHexStrikeVisuals();
 
     // Meta starting bonuses
     this.meta.applyStartingBonuses(this.perks, this.crystal);
@@ -228,7 +239,6 @@ export class Game {
     // W5: Endless / 子彈時間 / 動能逆轉
     this.endlessMode = false;
     this.entropy = 0;
-    this.bulletTimeRemaining = 0;
     this._bossLastDeadAt = -999;
     this._nexusLastDeadAt = -999;
     this._chronosLastDeadAt = -999;
@@ -327,9 +337,10 @@ export class Game {
     const timeScale = this.effects.hitStopActive ? 0.08 : 1.0;
     const dt = rawDtSec * timeScale;
 
-    // W5: 子彈時間倒數（rawDt-based 不受 hit-stop 影響）
-    if (this.bulletTimeRemaining > 0) this.bulletTimeRemaining -= rawDtSec;
-    const bulletTimeScale = (this.bulletTimeRemaining > 0) ? CONFIG.criticalSuspensionEnemyScale : 1.0;
+    // 瞬獄雷鳴 Hex Strike 狀態機（在時間刻度計算前 tick，這樣切換到 locking 立刻凍結同幀敵人）
+    this._hexStrikeTick(rawDtSec);
+    const hexFrozen = (this.hexStrike.state === 'locking' || this.hexStrike.state === 'striking');
+    const hexTimeScale = hexFrozen ? 0.0 : 1.0;
 
     // W6: Chronos 時間調制 — Chronos 活著時 enemyDt ×2，hero dash 時 0.5×
     // AoE 重整 2026-05-21：原本 Tether Snap 後也會 calm，現 Snap 已刪除
@@ -351,8 +362,8 @@ export class Game {
         CONFIG.chronosDmgReductionMin + (CONFIG.chronosDmgReductionMax - CONFIG.chronosDmgReductionMin) * t;
     }
 
-    // 最終敵人時間 = hero dt × bullet time × chronos
-    const enemyDt = dt * bulletTimeScale * this.chronosTimeMult;
+    // 最終敵人時間 = hero dt × hex strike freeze × chronos
+    const enemyDt = dt * hexTimeScale * this.chronosTimeMult;
 
     // W5: Endless 模式 entropy 增加
     if (this.endlessMode) {
@@ -365,16 +376,6 @@ export class Game {
 
     // === W4 + W6: bossActive 給 Regicide / Chronos 等用
     this.perks.bossActive = this.boss.alive[0] === 1 || this.nexus.alive[0] === 1 || this.chronos.alive[0] === 1 || this.mu.alive[0] === 1;
-
-    // === AoE 重整 2026-05-21：Fang Lunge 印記倒數（只有玩家拿 fangLunge 時才有 fangMark 陣列）===
-    if (this.perks.fangLunge) {
-      for (const sw of this._allSwarmsArr) {
-        if (!sw.fangMark) continue;
-        for (let i = 0; i < sw.maxCount; i++) {
-          if (sw.fangMark[i] > 0) sw.fangMark[i] = Math.max(0, sw.fangMark[i] - rawDtSec);
-        }
-      }
-    }
 
     // W7: 計算 tether 是否穿過 Mu（供 Mu.damage 用）
     if (this.mu.alive[0]) {
@@ -407,9 +408,6 @@ export class Game {
     // === 2026-05-21：boss 壓繫帶 → 水晶 DPS + hero chip DPS + 鎖回血 3s ===
     if (bossOnTether) {
       let dmg = CONFIG.bossOnTetherCrystalDps * rawDtSec;
-      if (this.perks.massCollapse && this.hero.gravityWellActive) {
-        dmg *= (1 - CONFIG.massCollapseCrystalDmgReduction);
-      }
       if (this.perks.shieldHp > 0) {
         const absorbed = Math.min(this.perks.shieldHp, dmg);
         this.perks.shieldHp -= absorbed;
@@ -470,9 +468,6 @@ export class Game {
     this.mirePatches.update(rawDtSec);
     this.hero.mireSlowFactor = this.mirePatches.isInsideAny(this.hero.position.x, this.hero.position.z)
       ? CONFIG.mireSlowFactor : 0;
-    if (this.perks.massCollapse && this.hero.gravityWellActive) {
-      this._applyGravityWell();
-    }
     this.boss.update(enemyDt, this.hero, this.crystal);
     this.boss.fillHash();
     // Boss 光束打中 hero
@@ -552,10 +547,7 @@ export class Game {
     // === 英雄脈衝（所有 swarm + W4 perks 參數）===
     const swarms = this._allSwarms();
     const hashes = this._allHashes();
-    const pulseHits = this.hero.autoAttack(
-      swarms, hashes,
-      this.tether.orbitalCount          // 給 Soul Debt
-    );
+    const pulseHits = this.hero.autoAttack(swarms, hashes);
     if (pulseHits.length > 0) {
       this.audio.playHit(1.0);
       this.effects.addTrauma(0.04 + Math.min(pulseHits.length, 8) * 0.01);
@@ -563,6 +555,19 @@ export class Game {
         // B24: Mu shell 反彈時不顯示誤導性的傷害數字
         if (!(h.swarm === this.mu && h.swarm.lastHitRejected)) {
           this.effects.spawnDamageNumber(h.x, 0.8, h.z, h.dmg, h.crit);
+        }
+        if (h.killed) this._onKill(h.swarm, h.x, h.z);
+      }
+    }
+
+    // === 穿刺劍氣 Pierce（2 秒一道）===
+    const pierceHits = this.hero.firePierce(swarms, rawDtSec);
+    if (pierceHits && pierceHits.length > 0) {
+      this.audio.playHit(0.7);
+      this.effects.addTrauma(0.05);
+      for (const h of pierceHits) {
+        if (!(h.swarm === this.mu && h.swarm.lastHitRejected)) {
+          this.effects.spawnDamageNumber(h.x, 0.7, h.z, h.dmg, false);
         }
         if (h.killed) this._onKill(h.swarm, h.x, h.z);
       }
@@ -580,11 +585,6 @@ export class Game {
         if (!(h.swarm === this.mu && h.swarm.lastHitRejected)) {
           this.effects.spawnDamageNumber(h.x, 0.9, h.z, h.dmg, true);
         }
-        // W4 Regicide: Dash 穿越 Boss 偷血治療水晶
-        if (this.perks.regicide && h.swarm.isBoss && !h.killed) {
-          const stolen = h.swarm.maxHp * CONFIG.regicideLifestealPct;
-          this.crystal.heal(stolen);
-        }
         if (h.killed) this._onKill(h.swarm, h.x, h.z);
       }
     }
@@ -597,8 +597,6 @@ export class Game {
       this._triggerKineticReversal();
     }
 
-    // === Soul Debt micro pulse（半衰期過載釋放）===
-    this._processSoulDebtMicroPulses();
 
     // === 怪撞水晶 ===
     const leechHits = this.swarm.collectCrystalHits(this.crystal.position.x, this.crystal.position.z, CONFIG.crystalHitRange);
@@ -623,7 +621,7 @@ export class Game {
     }
 
     // === 子彈 → 水晶（W5: 子彈時間也讓子彈變慢） ===
-    const bulletHits = this.bullets.update(enemyDt, this.crystal);
+    const bulletHits = this.bullets.update(enemyDt, this.crystal, this.perks);
     if (bulletHits > 0) {
       const damage = bulletHits * CONFIG.bulletDamage;
       this._damageCrystal(damage);
@@ -638,7 +636,7 @@ export class Game {
     }
 
     // === Bombs 推進 + 引信到 → 爆炸 AoE 同時對 hero + crystal 結算傷害 ===
-    const bombEvents = this.bombs.update(enemyDt);
+    const bombEvents = this.bombs.update(enemyDt, this.perks);
     if (bombEvents.length > 0) this._processBombExplosions(bombEvents);
 
     // === Sync GPU ===
@@ -653,7 +651,7 @@ export class Game {
     this.mires.syncInstances(now);
 
     // === Souls + 護盾累積 ===
-    const arrived = this.tether.updateSouls(dt, this.crystal, this.hero, this.perks);
+    const arrived = this.tether.updateSouls(dt, this.crystal, this.hero, this.perks, this.swarm, this.hash);
     if (arrived > 0) {
       this.crystal.heal(arrived * CONFIG.crystalHealPerSoul);
       if (this.perks.aegisStacks > 0) {
@@ -1072,37 +1070,9 @@ export class Game {
     }
   }
 
-  /** Soul Debt 半衰期：靈魂軌道結束時釋放微脈衝（18% 傷害、60% 半徑）然後 2× 速衝回水晶 */
-  _processSoulDebtMicroPulses() {
-    const queue = this.tether.microPulseQueue;
-    if (!queue || queue.length === 0) return;
-    const radius = CONFIG.heroPulseRadius * (this.perks.pulseRadiusMult || 1)
-      * (this.perks._earlyRadiusBonus ?? 1) * CONFIG.soulDebtMicroPulseRadiusMult;
-    const r2 = radius * radius;
-    const baseDmg = CONFIG.heroPulseBaseDamage
-      * CONFIG.soulDebtMicroPulseDmgMult * (this.perks.heroDmgGlobal || 1);
-    for (const ev of queue) {
-      this.hero.spawnPulseRing(ev.x, ev.z, radius, 0xddaaff, 0.55);
-      for (const sw of this._allSwarms()) {
-        for (let i = 0; i < sw.maxCount; i++) {
-          if (!sw.alive[i]) continue;
-          const dx = sw.pos[i*3+0] - ev.x;
-          const dz = sw.pos[i*3+2] - ev.z;
-          if (dx*dx + dz*dz > r2) continue;
-          const killed = sw.damage(i, baseDmg);
-          if (killed) this._onKill(sw, sw.pos[i*3+0], sw.pos[i*3+2]);
-        }
-      }
-    }
-    queue.length = 0;
-  }
-
-  /** W5 包裝：hit-stop + 可能觸發 bullet time（取決於 Critical Suspension perk） */
+  /** 包裝：hit-stop（W5 bullet-time 在 2026-05-22 重寫後改成被動，不再由此觸發） */
   _impact(hsDur) {
     this.effects.triggerHitStop(hsDur);
-    if (this.perks.criticalSuspension) {
-      this.bulletTimeRemaining = Math.max(this.bulletTimeRemaining, CONFIG.criticalSuspensionDuration);
-    }
   }
 
   /** 2026-05-21 新血量系統：每幀檢查 hero 與「非 mite」敵人 / boss 觸碰，iframe 期間吸收 */
@@ -1220,11 +1190,165 @@ export class Game {
     this.audio.playDashHit();
   }
 
-  _damageCrystal(amount, bypassShield = false) {
-    // W4 Mass Collapse: 重力場啟動時，水晶受所有傷害減 25%
-    if (this.perks.massCollapse && this.hero.gravityWellActive) {
-      amount *= (1 - CONFIG.massCollapseCrystalDmgReduction);
+  /** ⚡ 瞬獄雷鳴 — 視覺池初始化（在 constructor 呼叫） */
+  _initHexStrikeVisuals() {
+    this._hexLockMeshes = [];
+    this._hexBoltMeshes = [];
+    const N = CONFIG.hexStrikeTargetCount;
+
+    // 鎖定環（赤紅雙環）
+    const ringGeo = new THREE.RingGeometry(0.55, 0.95, 32);
+    ringGeo.rotateX(-Math.PI / 2);
+    for (let i = 0; i < N; i++) {
+      const mat = new THREE.MeshBasicMaterial({
+        color: 0xff2244,
+        transparent: true,
+        opacity: 0,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      });
+      const mesh = new THREE.Mesh(ringGeo, mat);
+      mesh.position.y = 0.06;
+      mesh.visible = false;
+      this.scene.add(mesh);
+      this._hexLockMeshes.push({ mesh, blink: 0 });
     }
+
+    // 雷柱（從天而降的圓柱）
+    const boltGeo = new THREE.CylinderGeometry(0.35, 0.08, 14, 6);
+    boltGeo.translate(0, 7, 0);
+    for (let i = 0; i < N; i++) {
+      const mat = new THREE.MeshBasicMaterial({
+        color: 0xff3344,
+        transparent: true,
+        opacity: 0,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      });
+      const mesh = new THREE.Mesh(boltGeo, mat);
+      mesh.visible = false;
+      this.scene.add(mesh);
+      this._hexBoltMeshes.push({ mesh, life: 0, lifeMax: 0.35 });
+    }
+  }
+
+  /** ⚡ 瞬獄雷鳴 — 每幀狀態機 tick */
+  _hexStrikeTick(rawDtSec) {
+    const hs = this.hexStrike;
+    if (hs.cooldown > 0) hs.cooldown -= rawDtSec;
+
+    if (hs.state === 'idle') {
+      if (!this.perks.hexStrikeOverload || hs.cooldown > 0) return;
+      // 嘗試觸發：找夠多敵人才動
+      const targets = this._findHexStrikeTargets();
+      if (targets.length < CONFIG.hexStrikeMinEnemies) return;
+      hs.targets = targets;
+      for (let i = 0; i < hs.targets.length; i++) {
+        hs.targets[i].lockTime = i * CONFIG.hexStrikeLockDelay;
+        hs.targets[i].struck = false;
+      }
+      hs.state = 'locking';
+      hs.timer = 0;
+      for (const m of this._hexLockMeshes) { m.mesh.visible = false; m.blink = 0; }
+      for (const m of this._hexBoltMeshes) m.mesh.visible = false;
+      this.audio.playDashHit();   // 進入鎖定的音效（暫用 dash 命中音）
+      return;
+    }
+
+    if (hs.state === 'locking') {
+      hs.timer += rawDtSec;
+      for (let i = 0; i < hs.targets.length; i++) {
+        const t = hs.targets[i];
+        const m = this._hexLockMeshes[i];
+        if (hs.timer < t.lockTime) continue;
+        if (!m.mesh.visible) {
+          m.mesh.position.set(t.x, 0.06, t.z);
+          m.mesh.visible = true;
+          m.blink = 0;
+        }
+        m.blink += rawDtSec * 18;
+        m.mesh.material.opacity = 0.55 + 0.45 * Math.sin(m.blink);
+      }
+      if (hs.timer >= CONFIG.hexStrikeLockDuration) {
+        hs.state = 'striking';
+        hs.timer = 0;
+      }
+      return;
+    }
+
+    if (hs.state === 'striking') {
+      hs.timer += rawDtSec;
+      for (let i = 0; i < hs.targets.length; i++) {
+        const t = hs.targets[i];
+        if (t.struck) continue;
+        if (hs.timer < i * CONFIG.hexStrikeStrikeInterval) continue;
+        this._applyHexStrike(t);
+        t.struck = true;
+        const bolt = this._hexBoltMeshes[i];
+        bolt.mesh.position.set(t.x, 0, t.z);
+        bolt.mesh.visible = true;
+        bolt.life = bolt.lifeMax;
+        this._hexLockMeshes[i].mesh.visible = false;
+      }
+      // 雷柱衰減
+      let anyVisible = false;
+      for (const bolt of this._hexBoltMeshes) {
+        if (!bolt.mesh.visible) continue;
+        bolt.life -= rawDtSec;
+        if (bolt.life <= 0) { bolt.mesh.visible = false; continue; }
+        bolt.mesh.material.opacity = bolt.life / bolt.lifeMax;
+        anyVisible = true;
+      }
+      const allStruck = hs.targets.every(t => t.struck);
+      if (allStruck && !anyVisible) {
+        hs.state = 'idle';
+        hs.cooldown = CONFIG.hexStrikeCooldown;
+        hs.targets = [];
+      }
+    }
+  }
+
+  /** 從所有 swarm 中找 N 個隨機活敵人（不打 boss 主體，避免一秒秒掉） */
+  _findHexStrikeTargets() {
+    const candidates = [];
+    const bossPools = new Set([this.boss, this.nexus, this.chronos, this.mu]);
+    for (const sw of this._allSwarmsArr) {
+      if (bossPools.has(sw)) continue;
+      for (let i = 0; i < sw.maxCount; i++) {
+        if (!sw.alive[i]) continue;
+        candidates.push({ pool: sw, idx: i, x: sw.pos[i*3+0], z: sw.pos[i*3+2] });
+      }
+    }
+    // Fisher-Yates partial shuffle
+    const n = Math.min(CONFIG.hexStrikeTargetCount, candidates.length);
+    for (let i = 0; i < n; i++) {
+      const j = i + Math.floor(Math.random() * (candidates.length - i));
+      [candidates[i], candidates[j]] = [candidates[j], candidates[i]];
+    }
+    return candidates.slice(0, n);
+  }
+
+  /** 範圍打擊：以目標位置為圓心，半徑內所有敵人吃同樣傷害 */
+  _applyHexStrike(target) {
+    const r = CONFIG.hexStrikeRadius;
+    const r2 = r * r;
+    const dmg = CONFIG.hexStrikeDamage * (this.perks?.heroDmgGlobal || 1);
+    for (const sw of this._allSwarmsArr) {
+      for (let i = 0; i < sw.maxCount; i++) {
+        if (!sw.alive[i]) continue;
+        const ex = sw.pos[i*3+0], ez = sw.pos[i*3+2];
+        const dx = ex - target.x, dz = ez - target.z;
+        if (dx*dx + dz*dz > r2) continue;
+        const killed = sw.damage(i, dmg);
+        this.effects.spawnDamageNumber(ex, 0.9, ez, dmg, true);
+        if (killed) this._onKill(sw, ex, ez);
+      }
+    }
+    this.effects.addTrauma(0.22);
+    this.effects.addChroma(0.012);
+  }
+
+  _damageCrystal(amount, bypassShield = false) {
     if (!bypassShield && this.perks.shieldHp > 0) {
       const absorbed = Math.min(this.perks.shieldHp, amount);
       this.perks.shieldHp -= absorbed;
@@ -1236,25 +1360,6 @@ export class Game {
     }
     this.crystal.takeDamage(amount);
     this.audio.playTake();
-  }
-
-  /** W4 Mass Collapse: 重力場拉 mites 朝英雄 */
-  _applyGravityWell() {
-    const hx = this.hero.position.x, hz = this.hero.position.z;
-    const r = CONFIG.massCollapseRadius;
-    const r2 = r * r;
-    const pullStr = 9;
-    for (let i = 0; i < this.mites.maxCount; i++) {
-      if (!this.mites.alive[i]) continue;
-      const dx = hx - this.mites.pos[i*3+0];
-      const dz = hz - this.mites.pos[i*3+2];
-      const d2 = dx*dx + dz*dz;
-      if (d2 < r2 && d2 > 0.0001) {
-        const d = Math.sqrt(d2);
-        this.mites.knockback[i*3+0] += (dx/d) * pullStr;
-        this.mites.knockback[i*3+2] += (dz/d) * pullStr;
-      }
-    }
   }
 
   _gainXP(amount) {
@@ -1740,43 +1845,39 @@ export class Game {
   /** W7: 召喚 Mu 時備份所有 perk 效果欄位後重設為預設 */
   _muSnapshotPerks() {
     this._perksBackup = {
-      soulSkipHero: this.perks.soulSkipHero,
       soulDebt: this.perks.soulDebt,
       volatileLoop: this.perks.volatileLoop,
       regicide: this.perks.regicide,
-      massCollapse: this.perks.massCollapse,
       kineticReversal: this.perks.kineticReversal,
       criticalSuspension: this.perks.criticalSuspension,
       pierce: this.perks.pierce,
-      fangLunge: this.perks.fangLunge,
+      pierceTimer: this.perks.pierceTimer,
+      soulVacuum: this.perks.soulVacuum,
+      hexStrikeOverload: this.perks.hexStrikeOverload,
       volatilePulseMult: this.perks.volatilePulseMult,
       heroSpeedMult: this.perks.heroSpeedMult,
       dashCooldownMult: this.perks.dashCooldownMult,
       pulseRadiusMult: this.perks.pulseRadiusMult,
       critChanceBonus: this.perks.critChanceBonus,
-      critMultBonus: this.perks.critMultBonus,
-      soulSpeedMult: this.perks.soulSpeedMult,
       heroDmgGlobal: this.perks.heroDmgGlobal,
       aegisStacks: this.perks.aegisStacks,
       shieldHp: this.perks.shieldHp,
     };
     // 全部重設為預設
-    this.perks.soulSkipHero = false;
     this.perks.soulDebt = false;
     this.perks.volatileLoop = false;
     this.perks.regicide = false;
-    this.perks.massCollapse = false;
     this.perks.kineticReversal = false;
     this.perks.criticalSuspension = false;
     this.perks.pierce = false;
-    this.perks.fangLunge = false;
+    this.perks.pierceTimer = 0;
+    this.perks.soulVacuum = false;
+    this.perks.hexStrikeOverload = false;
     this.perks.volatilePulseMult = 1;
     this.perks.heroSpeedMult = 1.0;
     this.perks.dashCooldownMult = 1.0;
     this.perks.pulseRadiusMult = 1.0;
     this.perks.critChanceBonus = 0;
-    this.perks.critMultBonus = 0;
-    this.perks.soulSpeedMult = 1.0;
     this.perks.heroDmgGlobal = 1.0;
     this.perks.aegisStacks = 0;
     this.perks.shieldHp = 0;

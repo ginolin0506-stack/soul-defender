@@ -15,21 +15,20 @@ const DASH_OFFENSIVE_MIN_TARGETS = 3;   // dash 路徑上至少幾隻怪才衝
 const DASH_OFFENSIVE_RADIUS = 2.5;      // dash 視為「擊中」的擴散半徑
 
 // === Perk 優先序 — 數字越大越優先（生存優先；避開對 bot 行為有副作用的 perk）===
-// AoE 重整 2026-05-21：echo_pulse / tether_snap 已刪除；新增 pierce / fang_lunge
+// 2026-05-22：移除 fang_lunge / mass_collapse；新增 hex_strike_overload；多個 perk 機制重寫
 const PERK_PRIORITY = {
-  aegis_charge:        100,  // 堆盾 / 6 靈魂回盾，生存核心
-  crystallize:          95,  // +250 HP + 回滿，生存核心
-  bloom:                85,  // 範圍 +15%/層，清屏（已加上限 3 層）
-  swift_step:           80,  // 速度 + dash CD
-  pierce:               70,  // 單體傷害 +60%，間隔 +0.4s
-  crit_frenzy:          65,  // 暴擊堆疊（已加上限 3 層）
-  fang_lunge:           55,  // Dash 標記 → 下一脈衝 ×3
-  kinetic_reversal:     50,  // dash 後擊退 + debuff
-  regicide:             45,  // 對 boss 強，前期沒用
-  critical_suspension:  35,
-  soul_vacuum:          25,
-  soul_debt:             5,  // 軌道機制 bot 不會用
-  mass_collapse:         1,  // 移速 -20% 直接拖累 bot 移動
+  aegis_charge:         100,  // 堆盾 / 10 靈魂回盾，生存核心
+  crystallize:           95,  // +250 HP/層、最多 3 層
+  bloom:                 85,  // 範圍 +15%/層，清屏（已加上限 3 層）
+  swift_step:            80,  // 速度 + dash CD
+  hex_strike_overload:   75,  // CD 自動清場，bot 也能吃
+  pierce:                70,  // 2 秒一道劍氣，被動清場
+  crit_frenzy:           65,  // 暴擊堆疊（已加上限 3 層）
+  critical_suspension:   60,  // 飛行物半速，bot 容錯
+  kinetic_reversal:      50,  // dash 後擊退 + debuff
+  regicide:              45,  // 對 boss 強，前期沒用
+  soul_vacuum:           25,  // 路徑緩速，配合擊殺
+  soul_debt:             10,  // 星體護盾，貼身才有效
 };
 
 // localhost / 本機 IP 才允許 bot 模式 — 部署到雲端後外部訪客碰不到

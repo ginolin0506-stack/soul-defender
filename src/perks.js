@@ -1,47 +1,110 @@
 import { CONFIG } from './config.js';
 
-// === 13 個天賦定義 ===
-// 數個有獨特邏輯（active flag），其餘是純數值加成（stat mod）
+// === 12 個天賦定義（2026-05-22 大改） ===
+// - 移除：fang_lunge、mass_collapse
+// - 新增：hex_strike_overload（瞬獄雷鳴）
+// - 機制重寫：pierce、soul_vacuum、soul_debt、critical_suspension
+// - 數值微調：aegis_charge、regicide、crit_frenzy、swift_step、crystallize
 
 export const PERKS = {
-  fang_lunge: {
-    id: 'fang_lunge',
-    name: 'Fang Lunge',
-    nameCn: '狼牙突刺',
-    desc: 'Dash 直接命中敵人 → 該敵人被「狼牙印記」標記 3 秒，下一次脈衝對它造成 ×3.0 傷害（對小怪沒用，是 boss 殺手）',
+  // ============== 傳奇 Legendary ==============
+  hex_strike_overload: {
+    id: 'hex_strike_overload',
+    name: 'Synaptic Overload: Hex Strike',
+    nameCn: '瞬獄雷鳴·六芒鎖定',
+    desc: '啟動時時間凍結。準心依序鎖定畫面中隨機 6 個目標的頭部並閃爍，隨後 6 道赤紅落雷依序轟擊被鎖定的敵人。落雷結束後時間恢復運作。',
     rarity: 'legendary',
-    icon: '🗡️',
-    weight: 0.45,
-    apply(g) { g.perks.fangLunge = true; }
+    icon: '⚡',
+    weight: 0.35,
+    apply(g) {
+      g.perks.hexStrikeOverload = true;
+      g.hexStrike.cooldown = 4.0;   // 拿到就先給個前置 CD，避免一拿到就觸發
+    }
   },
+  soul_debt: {
+    id: 'soul_debt',
+    name: 'Soul Debt',
+    nameCn: '靈魂透支',
+    desc: '擊殺敵人後，靈魂會在玩家身邊環繞（上限 6 顆）。環繞期間碰到敵人造成傷害，3 秒後回到水晶。',
+    rarity: 'legendary',
+    icon: '🌠',
+    weight: 0.45,
+    apply(g) { g.perks.soulDebt = true; }
+  },
+  critical_suspension: {
+    id: 'critical_suspension',
+    name: 'Critical Suspension',
+    nameCn: '臨界滯留',
+    desc: '所有飛行物的速度減慢 50%（敵人子彈不再難閃避）。',
+    rarity: 'legendary',
+    icon: '⏱️',
+    weight: 0.45,
+    apply(g) { g.perks.criticalSuspension = true; }
+  },
+
+  // ============== 稀有 Rare ==============
   aegis_charge: {
     id: 'aegis_charge',
     name: 'Aegis Charge',
     nameCn: '靈光護甲',
-    desc: '每 6 個靈魂回流，水晶獲得護盾（每層 +35 盾，最多 5 層）',
+    desc: '每 10 個靈魂回流，水晶獲得護盾（每層 +20 盾，最多 3 層）',
     rarity: 'rare',
     icon: '🛡️',
     weight: 0.75,
     stackable: true,
-    maxStacks: 5,           // 平衡測試 2026-05-21：原本無限疊讓後期 build 同質化，全部都是 aegis 牆
+    maxStacks: 3,
     apply(g) { g.perks.aegisStacks += 1; }
   },
   pierce: {
     id: 'pierce',
     name: 'Pierce',
     nameCn: '穿刺',
-    desc: '脈衝傷害 +60%，但脈衝間隔 +0.4 秒（0.85 → 1.25s）。對 boss 單體 DPS 提升，對清屏沒有優勢。',
+    desc: '每 2 秒朝最近敵人射出一道劍氣，沿路徑造成傷害',
     rarity: 'rare',
     icon: '⚔️',
     weight: 0.7,
-    apply(g) { g.perks.pierce = true; }
+    apply(g) {
+      g.perks.pierce = true;
+      g.perks.pierceTimer = 0;   // 立刻準備發射
+    }
   },
-  // === 純數值加成 ===
+  soul_vacuum: {
+    id: 'soul_vacuum',
+    name: 'Soul Vacuum',
+    nameCn: '靈魂引力',
+    desc: '靈魂飛行路徑上會造成範圍緩速',
+    rarity: 'rare',
+    icon: '🌀',
+    weight: 0.75,
+    apply(g) { g.perks.soulVacuum = true; }
+  },
+  regicide: {
+    id: 'regicide',
+    name: 'Regicide',
+    nameCn: '弒君者',
+    desc: '對 Boss 傷害 +50%',
+    rarity: 'rare',
+    icon: '👑',
+    weight: 0.75,
+    apply(g) { g.perks.regicide = true; }
+  },
+  kinetic_reversal: {
+    id: 'kinetic_reversal',
+    name: 'Kinetic Reversal',
+    nameCn: '動能逆轉',
+    desc: 'Dash 結束時製造 8u 反相環 — 環內敵人朝水晶外被擊退 + 吃 2 秒 +50% 增傷 debuff',
+    rarity: 'rare',
+    icon: '🔃',
+    weight: 0.75,
+    apply(g) { g.perks.kineticReversal = true; }
+  },
+
+  // ============== 普通 Common ==============
   crit_frenzy: {
     id: 'crit_frenzy',
     name: 'Crit Frenzy',
     nameCn: '狂擊精通',
-    desc: '暴擊率 +15%，暴擊倍率 +0.4×（最多疊 3 層）',
+    desc: '暴擊率 +15%（最多疊 3 層）',
     rarity: 'common',
     icon: '🎯',
     weight: 1.3,
@@ -49,7 +112,6 @@ export const PERKS = {
     maxStacks: 3,
     apply(g) {
       g.perks.critChanceBonus += 0.15;
-      g.perks.critMultBonus += 0.4;
     }
   },
   bloom: {
@@ -68,97 +130,30 @@ export const PERKS = {
     id: 'swift_step',
     name: 'Swift Step',
     nameCn: '輕步',
-    desc: '移動速度 +18%、Dash 冷卻 -25%',
+    desc: '移動速度 +18%、Dash 冷卻 -10%',
     rarity: 'common',
     icon: '👣',
     weight: 1.3,
     stackable: true,
     apply(g) {
       g.perks.heroSpeedMult *= 1.18;
-      g.perks.dashCooldownMult *= 0.75;
+      g.perks.dashCooldownMult *= 0.90;
     }
   },
   crystallize: {
     id: 'crystallize',
     name: 'Crystallize',
     nameCn: '水晶共鳴',
-    desc: '水晶最大 HP +250，並立刻回滿',
+    desc: '水晶最大 HP +250，並立即回復 +250 HP（最多 3 層）',
     rarity: 'common',
     icon: '💎',
     weight: 1.1,
     stackable: true,
+    maxStacks: 3,
     apply(g) {
       g.crystal.maxHp += 250;
-      g.crystal.hp = g.crystal.maxHp;
+      g.crystal.hp = Math.min(g.crystal.maxHp, g.crystal.hp + 250);
     }
-  },
-  soul_vacuum: {
-    id: 'soul_vacuum',
-    name: 'Soul Vacuum',
-    nameCn: '靈魂引力',
-    desc: '靈魂飛行速度 +60%，跳過英雄直接回流水晶',
-    rarity: 'rare',
-    icon: '🌀',
-    weight: 0.75,
-    apply(g) {
-      g.perks.soulSpeedMult *= 1.6;
-      g.perks.soulSkipHero = true;
-    }
-  },
-  // === W4 新增 ===
-  regicide: {
-    id: 'regicide',
-    name: 'Regicide',
-    nameCn: '弒君者',
-    desc: '對 Boss 傷害 +50%；Boss 出現時 Dash CD -30%；Dash 穿越 Boss 偷 1% HP 治療水晶',
-    rarity: 'rare',
-    icon: '👑',
-    weight: 0.75,
-    apply(g) { g.perks.regicide = true; }
-  },
-  mass_collapse: {
-    id: 'mass_collapse',
-    name: 'Mass Collapse',
-    nameCn: '質量崩塌',
-    desc: '移速 -20%；靜止 1.5 秒後生成重力場（半徑 8）吸 Mites + 水晶受傷 -25%',
-    rarity: 'rare',
-    icon: '🕳️',
-    weight: 0.75,
-    apply(g) {
-      g.perks.massCollapse = true;
-      g.perks.heroSpeedMult *= 0.8;
-    }
-  },
-  soul_debt: {
-    id: 'soul_debt',
-    name: 'Soul Debt',
-    nameCn: '靈魂透支',
-    desc: '靈魂飛到英雄軌道 3 秒（每顆 +1.5% 傷害，上限 20 顆）；過載釋放微脈衝後 2× 速衝回水晶',
-    rarity: 'legendary',
-    icon: '🌠',
-    weight: 0.45,
-    apply(g) { g.perks.soulDebt = true; }
-  },
-  // === W5 時間軸 ===
-  critical_suspension: {
-    id: 'critical_suspension',
-    name: 'Critical Suspension',
-    nameCn: '臨界滯留',
-    desc: '所有 Hit-stop 觸發 0.6 秒「子彈時間」— 怪物速度降至 18%、英雄全速',
-    rarity: 'legendary',
-    icon: '⏱️',
-    weight: 0.45,
-    apply(g) { g.perks.criticalSuspension = true; }
-  },
-  kinetic_reversal: {
-    id: 'kinetic_reversal',
-    name: 'Kinetic Reversal',
-    nameCn: '動能逆轉',
-    desc: 'Dash 結束時製造 8u 反相環 — 環內敵人朝水晶外被擊退 + 吃 2 秒 +50% 增傷 debuff',
-    rarity: 'rare',
-    icon: '🔃',
-    weight: 0.75,
-    apply(g) { g.perks.kineticReversal = true; }
   },
 };
 
@@ -194,13 +189,13 @@ export const FORBIDDEN_PERKS = {
 const ALL_IDS = Object.keys(PERKS);
 
 // Gemini Onboarding：第一局卡池對「範圍 / 防守 / 安全型」加權
-// 避免新手首抽拿到 Fang Lunge / Soul Debt 這種高操作極端 perk
+// 避免新手首抽拿到 Soul Debt / Hex Strike 這種高操作極端 perk
 const FIRST_RUN_BOOST_IDS = new Set([
   'aegis_charge',   // 護盾，純防守
   'crystallize',    // 水晶 +HP，純安全
-  'bloom',          // 脈衝範圍 +25%，強化清屏
+  'bloom',          // 脈衝範圍，強化清屏
   'swift_step',     // 移速 + dash CD，容錯
-  'crit_frenzy',    // 暴擊，純數值線性 buff
+  'crit_frenzy',    // 暴擊率，純數值線性 buff
 ]);
 
 /**

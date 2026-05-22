@@ -164,7 +164,6 @@ export class Tether {
     this.soulFastReturn = new Uint8Array(this.maxSouls);    // Soul Debt 半衰期釋放後 2× 衝回水晶
     this.soulCount = 0;
     this.orbitalCount = 0;                                  // W4: 當前軌道靈魂數
-    this.microPulseQueue = [];                              // Soul Debt 過載釋放：{x, z} 由 game.js 結算
     this._hideM = new THREE.Matrix4().makeScale(0, 0, 0);
     for (let i = 0; i < this.maxSouls; i++) this.soulMesh.setMatrixAt(i, this._hideM);
     this.soulMesh.instanceMatrix.needsUpdate = true;
@@ -287,14 +286,22 @@ export class Tether {
   }
 
   /** B15: 跟 P6 同模式 — 死掉的 soul 只在剛死那幀寫 hide matrix
-   *  W4: 加入 Soul Debt 軌道狀態 (stage=2) */
-  updateSouls(dt, crystal, hero, perks) {
+   *  W4: 加入 Soul Debt 軌道狀態 (stage=2)
+   *  2026-05-22: 新增 swarm 參數，用於 Soul Vacuum 路徑緩速 + Soul Debt 環繞碰撞傷害 */
+  updateSouls(dt, crystal, hero, perks, swarm, swarmHash) {
     let arrived = 0;
     let matrixDirty = false;
-    const speedMult = perks ? (perks.soulSpeedMult || 1) : 1;
-    const skipHero = perks ? perks.soulSkipHero : false;
     const useOrbit = perks ? perks.soulDebt : false;
-    const speed = CONFIG.soulSpeed * speedMult;
+    const useVacuum = perks ? perks.soulVacuum : false;
+    const speed = CONFIG.soulSpeed;
+
+    // Soul Debt：環繞靈魂對範圍內敵人造成 DOT
+    const debtDmgRadius = CONFIG.soulDebtOrbitDamageRadius;
+    const debtDmgR2 = debtDmgRadius * debtDmgRadius;
+    const debtDmgPerSec = CONFIG.soulDebtOrbitDamageDPS * (perks?.heroDmgGlobal || 1);
+    // Soul Vacuum：飛行靈魂為周圍敵人加 slow
+    const vacuumR = CONFIG.soulVacuumSlowRadius;
+    const vacuumSlowDur = CONFIG.soulVacuumSlowDuration;
 
     for (let i = 0; i < this.maxSouls; i++) {
       if (!this.soulAlive[i]) {
@@ -307,26 +314,38 @@ export class Tether {
       }
       this.soulHidden[i] = 0;
 
-      // === Stage 2: 軌道環繞英雄 ===
+      // === Stage 2: 軌道環繞英雄（Soul Debt 星體護盾）===
       if (this.soulStage[i] === 2) {
         this.soulOrbitTime[i] -= dt;
         if (this.soulOrbitTime[i] <= 0) {
-          // 軌道結束 → 過載釋放微脈衝 + 2× 速沿 tether 衝回水晶
+          // 軌道結束 → 直接沿 tether 衝回水晶（2026-05-22：移除微脈衝釋放）
           this.soulStage[i] = 1;
           this.soulFastReturn[i] = 1;
           this.orbitalCount--;
-          // 在 hero 當前位置觸發微脈衝（game.js 結算 AOE）
-          this.microPulseQueue.push({
-            x: hero.position.x,
-            z: hero.position.z,
-          });
         } else {
           // 持續軌道
           const ang = this.soulOrbitAngle[i] + this.timeAccum * 2.0;
           const r = CONFIG.soulDebtOrbitRadius;
-          this.soulPos[i*3+0] = hero.position.x + Math.cos(ang) * r;
+          const orbitX = hero.position.x + Math.cos(ang) * r;
+          const orbitZ = hero.position.z + Math.sin(ang) * r;
+          this.soulPos[i*3+0] = orbitX;
           this.soulPos[i*3+1] = 1.0 + Math.sin(this.timeAccum * 6 + i * 0.7) * 0.25;
-          this.soulPos[i*3+2] = hero.position.z + Math.sin(ang) * r;
+          this.soulPos[i*3+2] = orbitZ;
+
+          // === 碰撞傷害：環繞靈魂掃描 swarm 內附近敵人造 DOT ===
+          if (swarm && swarmHash) {
+            const cand = swarmHash.queryXZ(orbitX, orbitZ, debtDmgRadius);
+            for (let k = 0; k < cand.length; k++) {
+              const j = cand[k];
+              if (!swarm.alive[j]) continue;
+              const dxh = swarm.pos[j*3+0] - orbitX;
+              const dzh = swarm.pos[j*3+2] - orbitZ;
+              if (dxh*dxh + dzh*dzh > debtDmgR2) continue;
+              swarm.damage(j, debtDmgPerSec * dt);
+              // 死亡判斷由 game.js 在下一輪 fillHash 後處理（簡化：不在此 onKill）
+            }
+          }
+
           this._tmpV.set(this.soulPos[i*3+0], this.soulPos[i*3+1], this.soulPos[i*3+2]);
           const s = 0.85 + 0.2 * Math.sin(this.timeAccum * 14 + i);
           this._tmpScale.set(s, s, s);
@@ -342,19 +361,32 @@ export class Tether {
       const sy = this.soulPos[i*3+1];
       const sz = this.soulPos[i*3+2];
       let tx, ty, tz;
-      if (skipHero || this.soulStage[i] === 1) {
+      if (this.soulStage[i] === 1) {
         tx = crystal.position.x; ty = 1.85; tz = crystal.position.z;
       } else {
         tx = hero.position.x; ty = 1.0; tz = hero.position.z;
       }
       const ddx = tx - sx, ddy = ty - sy, ddz = tz - sz;
       const dd = Math.hypot(ddx, ddy, ddz);
-      // Soul Debt 過載釋放後：以 returnSpeedMult 速度沿 tether 衝回水晶
       const effectiveSpeed = this.soulFastReturn[i] ? speed * CONFIG.soulDebtReturnSpeedMult : speed;
       const step = effectiveSpeed * dt;
+
+      // === Soul Vacuum 路徑緩速：對 swarm 內附近敵人加 slowTimer ===
+      if (useVacuum && swarm && swarmHash) {
+        const cand = swarmHash.queryXZ(sx, sz, vacuumR);
+        for (let k = 0; k < cand.length; k++) {
+          const j = cand[k];
+          if (!swarm.alive[j]) continue;
+          const dxs = swarm.pos[j*3+0] - sx;
+          const dzs = swarm.pos[j*3+2] - sz;
+          if (dxs*dxs + dzs*dzs > vacuumR * vacuumR) continue;
+          if (swarm.slowTimer[j] < vacuumSlowDur) swarm.slowTimer[j] = vacuumSlowDur;
+        }
+      }
+
       if (dd <= step) {
         // 到達目標
-        if (this.soulStage[i] === 0 && !skipHero) {
+        if (this.soulStage[i] === 0) {
           // 到達英雄 → 看是否進軌道
           if (useOrbit && this.orbitalCount < CONFIG.soulDebtMaxOrbit) {
             this.soulStage[i] = 2;
@@ -365,7 +397,7 @@ export class Tether {
             this.soulPos[i*3+0] = tx; this.soulPos[i*3+1] = ty; this.soulPos[i*3+2] = tz;
           }
         } else {
-          // 到達水晶（或 skipHero 直接到水晶）
+          // 到達水晶
           this.soulAlive[i] = 0;
           this.soulCount--;
           arrived++;

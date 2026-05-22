@@ -69,6 +69,29 @@ export class Hero {
     }
     this._pulseNext = 0;
 
+    // 穿刺劍氣視覺池
+    this._swordWaves = [];
+    {
+      const g = new THREE.PlaneGeometry(1, 1);
+      g.rotateX(-Math.PI / 2);
+      for (let i = 0; i < 6; i++) {
+        const m = new THREE.MeshBasicMaterial({
+          color: 0xccff77,
+          transparent: true,
+          opacity: 0,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false,
+          side: THREE.DoubleSide,
+        });
+        const mesh = new THREE.Mesh(g, m);
+        mesh.position.y = 0.45;
+        mesh.visible = false;
+        scene.add(mesh);
+        this._swordWaves.push({ mesh, age: 0, lifetime: CONFIG.pierceLifetime });
+      }
+    }
+    this._swordWaveNext = 0;
+
     // Dash trail
     this._dashTrail = [];
     for (let i = 0; i < 5; i++) {
@@ -100,10 +123,6 @@ export class Hero {
     this.damageIframeTimer = 0;       // 受傷後共用無敵秒數（觸怪 / 光束都會設）
     this.healBlockTimer = 0;          // boss 壓繫帶後 N 秒鎖回血
     this.hitFlash = 0;                // 視覺：受傷時 body 短閃
-
-    // W4: Mass Collapse 用
-    this.stationaryTime = 0;
-    this.gravityWellActive = false;
 
     // 2026-05-22 Mire patches：游 hero 走進沼澤時的減速倍率（0 = 不減速，0.4 = 60% 速度）
     this.mireSlowFactor = 0;
@@ -164,28 +183,9 @@ export class Hero {
       }
       this.dashDir.set(dx, 0, dz).normalize();
       this.dashTimer = CONFIG.heroDashDuration;
-      // W4 Regicide: Boss 存活時 Dash CD 額外 -30%
-      const regicideBonus = (this.perks?.regicide && this.perks?.bossActive)
-        ? CONFIG.regicideDashCdMult : 1;
-      this.dashCooldown = CONFIG.heroDashCooldown
-        * (this.perks?.dashCooldownMult || 1)
-        * regicideBonus;
+      this.dashCooldown = CONFIG.heroDashCooldown * (this.perks?.dashCooldownMult || 1);
       this.invulnerable = true;
       this.dashJustTriggered = true;
-    }
-
-    // W4 Mass Collapse: 追蹤靜止時間
-    if (this.perks?.massCollapse) {
-      const moving = this._tmpMove.x !== 0 || this._tmpMove.z !== 0 || this.dashTimer > 0;
-      if (moving) {
-        this.stationaryTime = 0;
-        this.gravityWellActive = false;
-      } else {
-        this.stationaryTime += dt;
-        this.gravityWellActive = this.stationaryTime >= CONFIG.massCollapseStandTime;
-      }
-    } else {
-      this.gravityWellActive = false;
     }
 
     this.pulseTimer -= dt;
@@ -199,6 +199,15 @@ export class Hero {
       const s = 1.0 + t * (p.finalRadius - 1.0);
       p.mesh.scale.set(s, 1, s);
       p.mesh.material.opacity = (1 - t) * 0.8;
+    }
+
+    // 穿刺劍氣衰減
+    for (const w of this._swordWaves) {
+      if (!w.mesh.visible) continue;
+      w.age += dt;
+      const f = w.age / w.lifetime;
+      if (f >= 1) { w.mesh.visible = false; continue; }
+      w.mesh.material.opacity = (1 - f) * 0.85;
     }
 
     // Dash trail 衰減
@@ -253,14 +262,11 @@ export class Hero {
    * AOE 脈衝攻擊（覆蓋多 swarm）
    * @param swarms array of swarm
    * @param hashes array of hash（一一對應）
-   * @param orbitalSoulCount Soul Debt 軌道靈魂數，每顆 +3% 傷害
    */
-  autoAttack(swarms, hashes, orbitalSoulCount = 0) {
+  autoAttack(swarms, hashes) {
     const hits = [];
     if (this.pulseTimer > 0) return hits;
-    // AoE 重整 2026-05-21：Pierce 把脈衝間隔 +0.4 秒（trade-off：對 boss 單體 +60% 傷害但降頻）
-    this.pulseTimer = CONFIG.heroPulseInterval
-      + (this.perks?.pierce ? CONFIG.pierceIntervalAdd : 0);
+    this.pulseTimer = CONFIG.heroPulseInterval;
 
     const radiusMult = this.perks?.pulseRadiusMult || 1;
     // 玩家反饋：開局攻擊範圍太小 → 套用 game.js 算好的 earlyRadiusBonus
@@ -268,11 +274,6 @@ export class Hero {
     const radius = CONFIG.heroPulseRadius * radiusMult * earlyBonus;
     const r2 = radius * radius;
 
-    // W4 Soul Debt 傷害加成
-    const soulDebtBonus = (this.perks?.soulDebt && orbitalSoulCount > 0)
-      ? (1 + orbitalSoulCount * CONFIG.soulDebtDmgPerSoul) : 1;
-    // AoE 重整 2026-05-21：Pierce 單體傷害倍率
-    const pierceMult = this.perks?.pierce ? CONFIG.pierceDamageMult : 1;
     // Volatile Loop（禁忌代碼）+150% 脈衝傷害（脈衝專屬，不波及 Dash / KineticReversal）
     const volatilePulseMult = this.perks?.volatilePulseMult || 1;
 
@@ -290,20 +291,13 @@ export class Hero {
         if (dx*dx + dz*dz > r2) continue;
 
         const crit = Math.random() < (CONFIG.heroPulseCritChance + (this.perks?.critChanceBonus || 0));
-        let dmg = CONFIG.heroPulseBaseDamage * soulDebtBonus * pierceMult * volatilePulseMult;
-        if (crit) dmg *= (CONFIG.heroPulseCritMult + (this.perks?.critMultBonus || 0));
+        let dmg = CONFIG.heroPulseBaseDamage * volatilePulseMult;
+        if (crit) dmg *= CONFIG.heroPulseCritMult;
         // W4 Regicide: 對 Boss 傷害 +50%
         if (this.perks?.regicide && swarm.isBoss) dmg *= CONFIG.regicideBossDmgMult;
         // W6 Glass Prism / 其他全域傷害倍率
         dmg *= (this.perks?.heroDmgGlobal || 1);
-        // AoE 重整 2026-05-21：Fang Lunge 印記 — 被 dash 命中的敵人下一次脈衝吃 ×3
-        let fangCrit = false;
-        if (this.perks?.fangLunge && swarm.fangMark && swarm.fangMark[i] > 0) {
-          dmg *= CONFIG.fangLungeMult;
-          swarm.fangMark[i] = 0; // 消耗印記
-          fangCrit = true;
-        }
-        hits.push({ swarm, idx: i, killed: false, x: ex, z: ez, dmg, crit: crit || fangCrit, dx, dz });
+        hits.push({ swarm, idx: i, killed: false, x: ex, z: ez, dmg, crit, dx, dz });
       }
     }
 
@@ -343,11 +337,6 @@ export class Hero {
         const len = Math.max(0.001, Math.hypot(dx, dz));
         const kb = CONFIG.heroDashKnockback;
         swarm.applyKnockback(i, (dx/len) * kb, (dz/len) * kb);
-        // AoE 重整 2026-05-21：Fang Lunge — 對未死的敵人下「狼牙印記」，下一次脈衝 ×3
-        if (this.perks?.fangLunge && !killed) {
-          if (!swarm.fangMark) swarm.fangMark = new Float32Array(swarm.maxCount);
-          swarm.fangMark[i] = CONFIG.fangLungeDuration;
-        }
         hits.push({ swarm, idx: i, killed, x: ex, z: ez, dmg, crit: true });
       }
     }
@@ -373,5 +362,77 @@ export class Hero {
     ring.mesh.visible = true;
     ring.age = 0;
     ring.finalRadius = radius;
+  }
+
+  /**
+   * 穿刺 Pierce：每 N 秒朝最近敵人射出一道劍氣，沿線段對所有敵人造成範圍傷害
+   * @returns array of hit objects（同 autoAttack）— 給 game.js 結算 onKill / 傷害數字
+   */
+  firePierce(swarms, dt) {
+    if (!this.perks?.pierce) return null;
+    this.perks.pierceTimer = (this.perks.pierceTimer || 0) - dt;
+    if (this.perks.pierceTimer > 0) return null;
+    this.perks.pierceTimer = CONFIG.pierceInterval;
+
+    // 找最近敵人（用 swarms 直接掃，不走 hash 因為 pierceRange 大）
+    let nearest = null;
+    let bestD2 = Infinity;
+    for (const sw of swarms) {
+      for (let i = 0; i < sw.maxCount; i++) {
+        if (!sw.alive[i]) continue;
+        const dx = sw.pos[i*3+0] - this.position.x;
+        const dz = sw.pos[i*3+2] - this.position.z;
+        const d2 = dx*dx + dz*dz;
+        if (d2 < bestD2) { bestD2 = d2; nearest = { x: sw.pos[i*3+0], z: sw.pos[i*3+2] }; }
+      }
+    }
+    if (!nearest) return null;
+
+    const dx = nearest.x - this.position.x;
+    const dz = nearest.z - this.position.z;
+    const dist = Math.sqrt(dx*dx + dz*dz) || 1;
+    const ndx = dx / dist, ndz = dz / dist;
+    const range = CONFIG.pierceRange;
+    const endX = this.position.x + ndx * range;
+    const endZ = this.position.z + ndz * range;
+
+    const width = CONFIG.pierceWidth;
+    const w2 = width * width;
+    const dmg = CONFIG.pierceDamage * (this.perks?.heroDmgGlobal || 1);
+    const hits = [];
+    for (const sw of swarms) {
+      for (let i = 0; i < sw.maxCount; i++) {
+        if (!sw.alive[i]) continue;
+        const ex = sw.pos[i*3+0], ez = sw.pos[i*3+2];
+        const dot = (ex - this.position.x) * ndx + (ez - this.position.z) * ndz;
+        if (dot < 0 || dot > range) continue;
+        const px = this.position.x + ndx * dot;
+        const pz = this.position.z + ndz * dot;
+        const ddx = ex - px, ddz = ez - pz;
+        if (ddx*ddx + ddz*ddz > w2) continue;
+        let d = dmg;
+        if (sw.isBoss && this.perks?.regicide) d *= CONFIG.regicideBossDmgMult;
+        const killed = sw.damage(i, d);
+        hits.push({ swarm: sw, idx: i, killed, x: ex, z: ez, dmg: d, crit: false });
+      }
+    }
+
+    this._spawnSwordWave(this.position.x, this.position.z, endX, endZ);
+    return hits;
+  }
+
+  _spawnSwordWave(x1, z1, x2, z2) {
+    const w = this._swordWaves[this._swordWaveNext];
+    this._swordWaveNext = (this._swordWaveNext + 1) % this._swordWaves.length;
+    const cx = (x1 + x2) / 2, cz = (z1 + z2) / 2;
+    const dx = x2 - x1, dz = z2 - z1;
+    const len = Math.sqrt(dx*dx + dz*dz);
+    w.mesh.position.set(cx, 0.45, cz);
+    w.mesh.scale.set(len, 1, CONFIG.pierceWidth * 2.2);
+    w.mesh.rotation.y = Math.atan2(dx, dz) - Math.PI / 2;
+    w.mesh.material.opacity = 0.85;
+    w.mesh.visible = true;
+    w.age = 0;
+    w.lifetime = CONFIG.pierceLifetime;
   }
 }

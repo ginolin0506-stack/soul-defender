@@ -541,8 +541,11 @@ export class SplitterBombs {
    * 回傳本幀「需要結算傷害的爆炸事件」陣列：[{x, z}, ...]
    * Game 收到事件後負責對 hero / crystal / 視覺做後處理。
    */
-  update(dt) {
+  update(dt, perks) {
     const decel = CONFIG.splitterBombDecel;
+    // 2026-05-22 Critical Suspension：被動讓飛行炸彈減速（fuse 不變，只縮短位移）
+    const projMult = (perks && perks.criticalSuspension) ? CONFIG.criticalSuspensionProjMult : 1.0;
+    const moveDt = dt * projMult;
     const events = [];
     for (let i = 0; i < this.maxCount; i++) {
       if (!this.alive[i]) {
@@ -564,8 +567,8 @@ export class SplitterBombs {
         this.vel[i*3+2] = vz0 * m;
       }
 
-      this.pos[i*3+0] += this.vel[i*3+0] * dt;
-      this.pos[i*3+2] += this.vel[i*3+2] * dt;
+      this.pos[i*3+0] += this.vel[i*3+0] * moveDt;
+      this.pos[i*3+2] += this.vel[i*3+2] * moveDt;
       this.fuse[i] -= dt;
 
       if (this.fuse[i] <= 0) {

@@ -255,28 +255,21 @@ export const CONFIG = {
   nexusKillSouls: 35,
 
   // === W4 新 perks 數值 ===
+  // 弒君者 Regicide（2026-05-22 簡化：移除 Dash CD bonus / Dash 偷血）
   regicideBossDmgMult: 1.5,
-  regicideDashCdMult: 0.7,
-  regicideLifestealPct: 0.01,
-  massCollapseSpeedMult: 0.8,
-  massCollapseStandTime: 1.5,
-  massCollapseRadius: 8,
-  massCollapseCrystalDmgReduction: 0.25,
-  // Gemini 2026-05-21 Soul Debt 重構：「動態延遲回流」
-  // 原本 5s 攔截 → 改 3s 半衰期，過載釋放微脈衝後沿 tether 2× 速衝回水晶
-  // 解決「靈魂在英雄旁繞圈，水晶沒充能而暴斃」的卡池內鬼問題
+
+  // 靈魂透支 Soul Debt（2026-05-22 重構：星體護盾碰撞傷害，上限 6）
   soulDebtOrbitTime: 3.0,
   soulDebtOrbitRadius: 2.2,
-  // AoE 重整 2026-05-21：3%/隻 (max 30 = +90%) → 1.5%/隻 (max 20 = +30%)；微脈衝 30% → 18%
-  soulDebtDmgPerSoul: 0.015,
-  soulDebtMaxOrbit: 20,
+  soulDebtMaxOrbit: 6,                 // 20 → 6（變成貼身護盾不是 dps engine）
   soulDebtReturnSpeedMult: 2.0,
-  soulDebtMicroPulseDmgMult: 0.18,
-  soulDebtMicroPulseRadiusMult: 0.6,
+  soulDebtOrbitDamageRadius: 0.7,      // 環繞靈魂的「碰撞範圍」
+  soulDebtOrbitDamageDPS: 35,          // 每秒對範圍內敵人造成的傷害
+  soulDebtOrbitTickInterval: 0.2,      // DOT 結算間隔（避免每 frame 都算）
 
   // === W5 時間軸天賦 ===
-  criticalSuspensionDuration: 0.6,   // hit-stop 觸發後子彈時間總時長（含 hit-stop）
-  criticalSuspensionEnemyScale: 0.18, // 子彈時間內怪物速度倍率
+  // 臨界滯留 Critical Suspension（2026-05-22 重寫：被動讓所有飛行物減速）
+  criticalSuspensionProjMult: 0.5,    // 持有時敵方飛行物速度倍率
   kineticReversalRadius: 8,
   kineticReversalForce: 24,           // 推力強度
   kineticReversalDamage: 14,          // 2026-05-22：定錨 Leech HP × 1/4（55 × 0.25 ≈ 13.75 → 14），純控場非清屏
@@ -389,16 +382,30 @@ export const CONFIG = {
   xpExponent: 1.18,
 
   // === 天賦 ===
-  aegisSoulsPerShield: 6,
-  aegisShieldPerStack: 35,
+  // 靈光護甲 Aegis Charge（2026-05-22：6→10、+35→+20、5 層→3 層）
+  aegisSoulsPerShield: 10,
+  aegisShieldPerStack: 20,
 
-  // === AoE 重整新增 2026-05-21 ===
-  // 狼牙突刺：Dash 命中標記，下一次脈衝對該敵人 ×N 倍率
-  fangLungeMult: 3.0,
-  fangLungeDuration: 3.0,
-  // 穿刺：脈衝傷害 +60%，但脈衝間隔 +0.4s（單體傷害 trade-off）
-  pierceDamageMult: 1.6,
-  pierceIntervalAdd: 0.4,
+  // === 2026-05-22 機制重寫 ===
+  // 穿刺 Pierce：每 N 秒對最近敵人發射一道劍氣，沿線段造成傷害
+  pierceInterval: 2.0,
+  pierceDamage: 32,         // 約等於兩次脈衝傷害
+  pierceRange: 14,          // 劍氣總長度
+  pierceWidth: 0.6,         // 劍氣命中半徑（線到敵人距離）
+  pierceLifetime: 0.18,     // 視覺殘留時間
+  // 靈魂引力 Soul Vacuum：靈魂飛行時對周圍敵人施加緩速
+  soulVacuumSlowRadius: 1.8,
+  soulVacuumSlowMult: 0.5,
+  soulVacuumSlowDuration: 0.6,
+  // 瞬獄雷鳴 Hex Strike Overload：CD 自動觸發，凍結時間 → 鎖定 6 目標 → 6 道紅雷
+  hexStrikeCooldown: 15.0,
+  hexStrikeMinEnemies: 3,
+  hexStrikeTargetCount: 6,
+  hexStrikeLockDuration: 1.2,   // 鎖定動畫總時長
+  hexStrikeLockDelay: 0.18,     // 每個鎖定環依序出現的間隔
+  hexStrikeStrikeInterval: 0.16,// 雷擊間隔
+  hexStrikeDamage: 600,         // 單發傷害（足以一擊清掉非 boss）
+  hexStrikeRadius: 1.6,         // 雷擊命中半徑（範圍打擊周邊敵人）
 
   // === 第一局保護 ===
   firstRunEnemyCap: 55,

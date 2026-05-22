@@ -347,12 +347,16 @@ export class BulletPool {
 
   /** 推進 + 檢查水晶碰撞，回傳這幀命中數量
    *  P6: 死掉的 bullet 只在剛死那幀寫 scale-0，後續跳過
+   *  2026-05-22: 加 perks 參數，Critical Suspension 持有時飛行物減速
    */
-  update(dt, crystal) {
+  update(dt, crystal, perks) {
     let hits = 0;
     const cx = crystal.position.x, cz = crystal.position.z;
     const cR = CONFIG.crystalRadius * 1.4;
     const cR2 = cR * cR;
+    // Critical Suspension：被動讓敵方飛行物速度倍率（用 dt scaling 等效於 vel 縮放）
+    const projMult = (perks && perks.criticalSuspension) ? CONFIG.criticalSuspensionProjMult : 1.0;
+    const moveDt = dt * projMult;
     for (let i = 0; i < this.maxCount; i++) {
       if (!this.alive[i]) {
         if (!this._hidden[i]) {
@@ -361,8 +365,8 @@ export class BulletPool {
         }
         continue;
       }
-      this.pos[i*3+0] += this.vel[i*3+0] * dt;
-      this.pos[i*3+2] += this.vel[i*3+2] * dt;
+      this.pos[i*3+0] += this.vel[i*3+0] * moveDt;
+      this.pos[i*3+2] += this.vel[i*3+2] * moveDt;
       this.life[i] -= dt;
 
       const dx = this.pos[i*3+0] - cx;

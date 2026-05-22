@@ -78,6 +78,7 @@ export class Swarm {
     this.alive = new Uint8Array(maxCount);
     this.flashTime = new Float32Array(maxCount);
     this.dashHitTag = new Uint8Array(maxCount);
+    this.slowTimer = new Float32Array(maxCount);   // 2026-05-22 Soul Vacuum 緩速倒數
     // P4 + P6: 追蹤前一幀狀態避免重複寫入 GPU buffer
     this._wasFlashing = new Uint8Array(maxCount);
     this._hidden = new Uint8Array(maxCount).fill(1);  // 構造時全部 scale-0
@@ -122,6 +123,7 @@ export class Swarm {
       this.alive[i] = 1;
       this.flashTime[i] = 0;
       this.dashHitTag[i] = 0;
+      this.slowTimer[i] = 0;
       this.activeCount++;
       spawned++;
     }
@@ -177,8 +179,14 @@ export class Swarm {
       this.knockback[i*3+0] = kbx;
       this.knockback[i*3+2] = kbz;
 
-      const vx = dx * speed + sx * speed * sepStr + kbx;
-      const vz = dz * speed + sz * speed * sepStr + kbz;
+      let vx = dx * speed + sx * speed * sepStr + kbx;
+      let vz = dz * speed + sz * speed * sepStr + kbz;
+      // Soul Vacuum 緩速：靈魂飛過時施加 slowTimer，期間移速 ×soulVacuumSlowMult
+      if (this.slowTimer[i] > 0) {
+        this.slowTimer[i] = Math.max(0, this.slowTimer[i] - dt);
+        const m = CONFIG.soulVacuumSlowMult;
+        vx *= m; vz *= m;
+      }
       this.vel[i*3+0] = vx;
       this.vel[i*3+2] = vz;
       this.pos[i*3+0] = px + vx * dt;
