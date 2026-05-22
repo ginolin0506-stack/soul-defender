@@ -328,6 +328,17 @@ export class Game {
       return;
     }
 
+    // 瞬獄雷鳴 Hex Strike 狀態機 — 用真實時間 tick（即使凍結也要持續）
+    this._hexStrikeTick(rawDtSec);
+    const hexFrozen = (this.hexStrike.state === 'locking' || this.hexStrike.state === 'striking');
+
+    // === 凍結整個世界（包括玩家）— 視覺/音效仍維持流暢 ===
+    // 凍結時 rawDtSec / dt / enemyDt 都歸零：玩家無法移動 / dash / pulse / pierce、
+    // 敵人停止、生怪暫停、回血暫停、tether 暫停、子彈暫停。
+    // 視覺層（shake、chroma、hit-stop 衰減、kick BPM、教學）改用 visualRaw 保持動畫。
+    const visualRaw = rawDtSec;
+    if (hexFrozen) rawDtSec = 0;
+
     this.elapsed += rawDtSec;
 
     // 開局攻擊範圍 ease-in bonus（前 N 秒 +X% 半徑，線性降回 1.0）
@@ -336,11 +347,6 @@ export class Game {
 
     const timeScale = this.effects.hitStopActive ? 0.08 : 1.0;
     const dt = rawDtSec * timeScale;
-
-    // 瞬獄雷鳴 Hex Strike 狀態機（在時間刻度計算前 tick，這樣切換到 locking 立刻凍結同幀敵人）
-    this._hexStrikeTick(rawDtSec);
-    const hexFrozen = (this.hexStrike.state === 'locking' || this.hexStrike.state === 'striking');
-    const hexTimeScale = hexFrozen ? 0.0 : 1.0;
 
     // W6: Chronos 時間調制 — Chronos 活著時 enemyDt ×2，hero dash 時 0.5×
     // AoE 重整 2026-05-21：原本 Tether Snap 後也會 calm，現 Snap 已刪除
@@ -362,8 +368,8 @@ export class Game {
         CONFIG.chronosDmgReductionMin + (CONFIG.chronosDmgReductionMax - CONFIG.chronosDmgReductionMin) * t;
     }
 
-    // 最終敵人時間 = hero dt × hex strike freeze × chronos
-    const enemyDt = dt * hexTimeScale * this.chronosTimeMult;
+    // 最終敵人時間 = dt × chronos（hex 凍結時 dt 已經是 0，敵人自然停下）
+    const enemyDt = dt * this.chronosTimeMult;
 
     // W5: Endless 模式 entropy 增加
     if (this.endlessMode) {
@@ -371,8 +377,11 @@ export class Game {
     }
 
     // === Hero ===
-    this.hero.update(dt, this.input);
-    if (this.hero.dashJustTriggered) this.audio.playDash();
+    // 瞬獄雷鳴啟動中完全跳過 hero.update — 即使 dt=0 也要避免 input.wasPressed 觸發新 dash
+    if (!hexFrozen) {
+      this.hero.update(dt, this.input);
+      if (this.hero.dashJustTriggered) this.audio.playDash();
+    }
 
     // === W4 + W6: bossActive 給 Regicide / Chronos 等用
     this.perks.bossActive = this.boss.alive[0] === 1 || this.nexus.alive[0] === 1 || this.chronos.alive[0] === 1 || this.mu.alive[0] === 1;
@@ -666,8 +675,9 @@ export class Game {
     }
 
     this.crystal.update(dt, this.perks.shieldHp);
-    this.effects.update(rawDtSec);
-    this.tutorial.tick(rawDtSec);
+    // 視覺/教學 tick — 用 visualRaw 維持凍結期間的流暢動畫
+    this.effects.update(visualRaw);
+    this.tutorial.tick(visualRaw);
     // W4 + W6: 環境音 + Kick 動態
     const totalEnemies = this.swarm.activeCount + this.slingers.activeCount
       + this.splitters.activeCount + this.mites.activeCount
@@ -678,13 +688,13 @@ export class Game {
     this._lastEnemyCount = totalEnemies;
     if (this.audio.ambient) {
       this.audio.ambient.update(
-        rawDtSec,
+        visualRaw,
         totalEnemies,
         this.boss.alive[0] === 1 || this.nexus.alive[0] === 1 || this.chronos.alive[0] === 1
       );
     }
     if (this.audio.kick) {
-      this.audio.kick.update(rawDtSec, totalEnemies);
+      this.audio.kick.update(visualRaw, totalEnemies);
     }
 
     // W7: vertex glitch — endless 模式或 Mu 戰時 enable
