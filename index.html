@@ -35,6 +35,34 @@
       align-items: center;
       gap: 8px;
     }
+    /* HP 條左方標籤 */
+    .hp-label {
+      display: inline-block;
+      width: 64px;
+      flex-shrink: 0;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      text-align: right;
+      opacity: 0.92;
+    }
+    #crystal-hp-row .hp-label {
+      color: #d8b8ff;
+      text-shadow: 0 0 6px rgba(178,102,255,0.5), 0 1px 2px #000;
+    }
+    #hero-hp-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 4px;
+    }
+    #hero-hp-row .hp-label {
+      color: #ff9a9a;
+      text-shadow: 0 0 6px rgba(255,80,90,0.5), 0 1px 2px #000;
+    }
+    #hero-hp-row #hero-hp-wrap {
+      margin-top: 0;
+    }
     #crystal-hp-wrap {
       position: relative;
       width: 320px;
@@ -93,6 +121,7 @@
       border-radius: 2px;
       overflow: hidden;
       margin-top: 3px;
+      margin-left: 72px; /* 對齊 HP 條（標籤 64px + gap 8px） */
       box-shadow: 0 0 6px rgba(102,255,217,0.3);
     }
     #xp-bar {
@@ -1140,6 +1169,7 @@
 
   <div id="hud">
     <div id="crystal-hp-row">
+      <span class="hp-label">水晶能量</span>
       <div id="crystal-hp-wrap">
         <div id="crystal-hp"></div>
         <div id="crystal-shield-overlay"></div>
@@ -1147,7 +1177,10 @@
       <span id="shield-mult"></span>
     </div>
     <div id="xp-bar-wrap"><div id="xp-bar"></div></div>
-    <div id="hero-hp-wrap"><div id="hero-hp"></div></div>
+    <div id="hero-hp-row">
+      <span class="hp-label">玩家血量</span>
+      <div id="hero-hp-wrap"><div id="hero-hp"></div></div>
+    </div>
     <div id="hud-text">
       LV <span id="level">1</span>
       水晶 <span id="hp-text">1000 / 1000</span>
