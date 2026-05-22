@@ -1,14 +1,11 @@
 import * as THREE from 'three';
 import { CONFIG } from './config.js';
 
-const lerp = (a, b, t) => a + (b - a) * t;
-const clamp = (v, a, b) => v < a ? a : (v > b ? b : v);
-
 /**
  * Soul Tether — 3D 能量管道
  * - 自寫 tube（parallel-transport frame）每幀零 GC 重建
- * - Shader：UV scroll + 倍率影響顏色 + severed 紅化
- * - severed 時倍率強制 ×1
+ * - Shader：UV scroll + severed 紅化
+ * - severed 期間：水晶停止回血（傷害不再受距離影響）
  */
 export class Tether {
   constructor(scene, hero, crystal) {
@@ -16,10 +13,6 @@ export class Tether {
     this.crystal = crystal;
     this.scene = scene;
     this.distance = 0;
-    this.heroDmgMult = 1.0;
-    this.crystalVulnMult = 1.0;
-    this.heroDmgMultNatural = 1.0;
-    this.crystalVulnMultNatural = 1.0;
     this.flashAmount = 0;
     this.severed = false;
     this.selfSeveredRemaining = 0;       // W6 Volatile Loop 用
@@ -191,41 +184,14 @@ export class Tether {
     const cx = this.crystal.position.x, cz = this.crystal.position.z;
     this.distance = Math.hypot(hx - cx, hz - cz);
 
-    const minR = CONFIG.tetherMinRange;
-    const maxR = CONFIG.tetherMaxRange;
-    const tRaw = clamp((this.distance - minR) / (maxR - minR), 0, 1);
-
-    // 自然倍率（無 sever 影響）— bot 判斷 dash 時機用
-    this.heroDmgMultNatural = lerp(1, CONFIG.tetherDmgMultMax, tRaw);
-    this.crystalVulnMultNatural = lerp(1, CONFIG.tetherVulnMultMax, tRaw);
-
-    // 玩家反饋：站水晶旁完全沒代價 → 加 inner penalty zone
-    // 距離 0 → tetherInnerPenaltyRange 之間，hero damage 倍率從 penaltyMin 線性升到 1.0
-    // 這讓玩家不能站樁，必須走到 3.5 units 外才能打出完整輸出
-    if (this.distance < CONFIG.tetherInnerPenaltyRange) {
-      const innerT = this.distance / CONFIG.tetherInnerPenaltyRange;
-      const penalty = lerp(CONFIG.tetherInnerPenaltyMin, 1.0, innerT);
-      this.heroDmgMultNatural *= penalty;
-      // 同步降低水晶受傷倍率（站近水晶 = 怪打到水晶比較痛，但玩家輸出也廢 → 平衡）
-      this.crystalVulnMultNatural *= lerp(0.85, 1.0, innerT);
-    }
-
-    if (this.severed) {
-      this.heroDmgMult = 1.0;
-      this.crystalVulnMult = 1.0;
-    } else {
-      this.heroDmgMult = this.heroDmgMultNatural;
-      this.crystalVulnMult = this.crystalVulnMultNatural;
-    }
-
     // === 路徑計算 ===
     const heroY = 1.0, crystalY = 1.85;
     const dx = cx - hx, dz = cz - hz;
     const len = Math.max(0.001, Math.hypot(dx, dz));
     const nx = -dz / len, nz = dx / len;
-    const waveAmp = 0.15 + tRaw * 0.55 + (this.severed ? 0.4 : 0);  // severed 時抖更兇
-    const waveFreq = 6 + tRaw * 8 + (this.severed ? 6 : 0);
-    const arcH = 0.45 + tRaw * 0.25;
+    const waveAmp = 0.25 + (this.severed ? 0.4 : 0);  // severed 時抖更兇
+    const waveFreq = 8 + (this.severed ? 6 : 0);
+    const arcH = 0.55;
 
     for (let i = 0; i <= this.segs; i++) {
       const f = i / this.segs;
@@ -289,7 +255,7 @@ export class Tether {
     this.geo.attributes.normal.needsUpdate = true;
 
     this.material.uniforms.uTime.value = this.timeAccum;
-    this.material.uniforms.uTension.value = tRaw;
+    this.material.uniforms.uTension.value = 0;
     this.material.uniforms.uSevered.value = this.severed ? 1 : 0;
 
     if (this.flashAmount > 0) {

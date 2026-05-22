@@ -13,7 +13,7 @@ export class Tutorial {
 
     this.steps = {
       start: { text: 'WASD 移動，Space 衝刺。撞到怪會扣自己血量（繫帶連著時慢回血）；水晶或英雄任一血量歸零都算結束。', life: 11 },
-      tether: { text: '英雄離水晶越遠，繫帶倍率越高（傷害 ↑、水晶受傷也 ↑）。看 HUD 的「繫帶」數值。', life: 10 },
+      tether: { text: '英雄與水晶間有靈魂繫帶 — 連著時會緩慢回血；被 boss 切斷則停回血。', life: 10 },
       kill: { text: '殺敵會掉靈魂，沿繫帶回流治療水晶。離得近，靈魂回流快。', life: 8 },
       levelup: { text: '升級可選擇 1 個天賦，永久強化本局。傳奇 (橘色) 卡片最強。', life: null },
       slinger: { text: '紅色亮起的是遠程怪 — 子彈會射水晶。衝出去清掉！', life: 9 },

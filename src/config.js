@@ -28,7 +28,7 @@ export const CONFIG = {
   heroHealBlockOnBossTether: 3.0,   // boss 壓繫帶後鎖回血秒數
   heroBeamDamage: 18,               // boss 光束打中 hero 一次的傷害
   heroPulseInterval: 0.85,
-  heroPulseRadius: 4.0,            // base radius（站樁懲罰已由 tetherInnerPenalty 處理）
+  heroPulseRadius: 4.0,            // base radius
   // 玩家反饋（2026-05-20 再次）：開局攻擊範圍太小 → 前 30 秒 ease-in bonus
   // AoE 重整 2026-05-21：bonus 從 0.25 降到 0.12，避免開局 + Bloom 疊加成超大清屏
   heroPulseEarlyRadiusBoost: 0.12,
@@ -46,13 +46,7 @@ export const CONFIG = {
   heroDashKnockback: 28,           // 配 leechKnockbackRecover 5.5 → 位移 ≈ 5.1u（脈衝 4 → 0.7u）
 
   // === Soul Tether ===
-  tetherMaxRange: 18,
-  tetherMinRange: 2.0,
-  tetherDmgMultMax: 3.0,
-  tetherVulnMultMax: 2.0,
-  // 玩家反饋：站樁完全沒代價 → 加「水晶旁懲罰區」執行 tether 設計初衷
-  tetherInnerPenaltyRange: 3.5,   // 距離 < 此值時 hero damage 打折
-  tetherInnerPenaltyMin: 0.45,    // 站樁正中央時的最低倍率
+  // 視覺管道；不再附帶距離倍率（已移除「離越遠傷害越高」機制）
   tetherTubeRadius: 0.22,
   tetherSegments: 36,
   tetherRadialSegs: 8,
@@ -264,8 +258,6 @@ export const CONFIG = {
   regicideBossDmgMult: 1.5,
   regicideDashCdMult: 0.7,
   regicideLifestealPct: 0.01,
-  spatialFoldingDistance: 16,     // tether 距離超過這個就觸發
-  spatialFoldingMult: 1.5,        // AoE 重整 2026-05-21：boss-melt 鈍化（2.0 → 1.5）
   massCollapseSpeedMult: 0.8,
   massCollapseStandTime: 1.5,
   massCollapseRadius: 8,
@@ -397,16 +389,11 @@ export const CONFIG = {
   xpExponent: 1.18,
 
   // === 天賦 ===
-  // Gemini 2026-05-21 Lone Wolf 重構：「張力補償」雙模式
-  // 解決原本「3+ 敵人 ×1」讓 bot 強、真人後期擠在水晶旁倍率歸零的相剋問題
-  // 外圈：距離 > 15 線性加成；困獸：距離 < 10 + 密度 > 150 強制 +40% 倍率
-  loneWolfDistanceTrigger: 15,        // 距離大於這個值起開始線性加成
-  loneWolfDistanceCap: 30,            // 線性加成到頂的距離
-  loneWolfDistanceMaxMult: 2.0,       // 在 cap 距離時的最大倍率
-  loneWolfInnerDistance: 10,          // 困獸模式：距離小於這個才偵測密度
+  // Lone Wolf 困獸：被擠在水晶旁 + 周圍密度爆量時強制 +40% 倍率
+  loneWolfInnerDistance: 10,          // 距離小於這個才偵測密度
   loneWolfDensityRadius: 5,           // 困獸密度偵測半徑
   loneWolfDensityThreshold: 150,      // 密度門檻
-  loneWolfTrappedMult: 1.4,           // 困獸觸發的暴擊加成倍率
+  loneWolfTrappedMult: 1.4,           // 困獸觸發的倍率
   aegisSoulsPerShield: 6,
   aegisShieldPerStack: 35,
 

@@ -63,7 +63,7 @@ Custom visual layers (Fresnel rim glow, pseudo-AO, breathing squash, W7 vertex g
 
 ### Soul Tether (signature mechanic)
 
-`src/tether.js` renders a tube from hero → crystal and computes the distance-based damage/vulnerability multiplier. Camping near the crystal is penalized via `tetherInnerPenalty*` config — this was a deliberate design fix after playtesters discovered stand-still was optimal. Bosses interact with it: **Ohm** can sever it, **Nexus** pushes it away, **Mu** disables perks when crossed.
+`src/tether.js` renders a tube from hero → crystal and is the conduit for two systems: (1) souls travel along it back to the crystal after kills; (2) the hero passively heals while it's intact (see `heroTetherHealRate`). When severed, healing stops. Bosses interact with it: **Ohm** can sever it, **Nexus** pushes it away, **Mu** disables perks when crossed. The earlier distance-based damage/vulnerability multiplier was removed — tether no longer affects damage at all.
 
 ### Persistence — `meta.js`
 

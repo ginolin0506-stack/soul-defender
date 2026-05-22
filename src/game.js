@@ -184,7 +184,6 @@ export class Game {
       shieldOverlay: document.getElementById('crystal-shield-overlay'),
       shieldMult: document.getElementById('shield-mult'),
       hpText: document.getElementById('hp-text'),
-      tether: document.getElementById('tether-mult'),
       kills: document.getElementById('kills'),
       time: document.getElementById('time'),
       fps: document.getElementById('fps'),
@@ -408,7 +407,7 @@ export class Game {
 
     // === 2026-05-21：boss 壓繫帶 → 水晶 DPS + hero chip DPS + 鎖回血 3s ===
     if (bossOnTether) {
-      let dmg = CONFIG.bossOnTetherCrystalDps * rawDtSec * this.tether.crystalVulnMult;
+      let dmg = CONFIG.bossOnTetherCrystalDps * rawDtSec;
       if (this.perks.massCollapse && this.hero.gravityWellActive) {
         dmg *= (1 - CONFIG.massCollapseCrystalDmgReduction);
       }
@@ -486,13 +485,13 @@ export class Game {
     }
     // Boss 光束打中 crystal（如果光束軸線經過水晶半徑）
     if (this.boss.consumeBeamHitCrystal()) {
-      this._damageCrystal(CONFIG.bossBeamCrystalDamage * this.tether.crystalVulnMult);
+      this._damageCrystal(CONFIG.bossBeamCrystalDamage);
       this.effects.addTrauma(0.10);
       this.effects.addChroma(0.015);
     }
     // Boss 自爆：對水晶造成大量傷害，hero 若在範圍內吃一半
     if (this.boss.consumeSelfDestruct()) {
-      const sdDmg = CONFIG.bossSelfDestructDamage * this.tether.crystalVulnMult;
+      const sdDmg = CONFIG.bossSelfDestructDamage;
       this._damageCrystal(sdDmg);
       this.effects.addTrauma(1.5);
       this.effects.addChroma(0.08);
@@ -556,8 +555,7 @@ export class Game {
     const hashes = this._allHashes();
     const pulseHits = this.hero.autoAttack(
       swarms, hashes,
-      this.tether.heroDmgMult,
-      this.tether.distance,            // 給 Spatial Folding
+      this.tether.distance,            // 給 Lone Wolf 困獸密度偵測
       this.tether.orbitalCount          // 給 Soul Debt
     );
     if (pulseHits.length > 0) {
@@ -609,9 +607,9 @@ export class Game {
     const splitterHits = this.splitters.collectCrystalHits(this.crystal.position.x, this.crystal.position.z, CONFIG.crystalHitRange + 0.5);
     const sentinelHits = this.sentinels.collectCrystalHits(this.crystal.position.x, this.crystal.position.z, CONFIG.crystalHitRange + CONFIG.sentinelRadius);
     if (leechHits.length > 0 || splitterHits.length > 0 || sentinelHits.length > 0) {
-      const damage = (leechHits.length * CONFIG.leechDamage
+      const damage = leechHits.length * CONFIG.leechDamage
         + splitterHits.length * CONFIG.splitterDamage
-        + sentinelHits.length * CONFIG.sentinelDamage) * this.tether.crystalVulnMult;
+        + sentinelHits.length * CONFIG.sentinelDamage;
       this._damageCrystal(damage);
       const totalHits = leechHits.length + splitterHits.length + sentinelHits.length;
       this.effects.addTrauma(0.08 + totalHits * 0.02);
@@ -629,7 +627,7 @@ export class Game {
     // === 子彈 → 水晶（W5: 子彈時間也讓子彈變慢） ===
     const bulletHits = this.bullets.update(enemyDt, this.crystal);
     if (bulletHits > 0) {
-      const damage = bulletHits * CONFIG.bulletDamage * this.tether.crystalVulnMult;
+      const damage = bulletHits * CONFIG.bulletDamage;
       this._damageCrystal(damage);
       this.effects.addTrauma(0.06 + bulletHits * 0.02);
       this.audio.playCrystalHit();
@@ -685,8 +683,6 @@ export class Game {
     if (this.audio.ambient) {
       this.audio.ambient.update(
         rawDtSec,
-        this.tether.distance,
-        CONFIG.tetherMaxRange,
         totalEnemies,
         this.boss.alive[0] === 1 || this.nexus.alive[0] === 1 || this.chronos.alive[0] === 1
       );
@@ -1085,7 +1081,7 @@ export class Game {
     const radius = CONFIG.heroPulseRadius * (this.perks.pulseRadiusMult || 1)
       * (this.perks._earlyRadiusBonus ?? 1) * CONFIG.soulDebtMicroPulseRadiusMult;
     const r2 = radius * radius;
-    const baseDmg = CONFIG.heroPulseBaseDamage * this.tether.heroDmgMult
+    const baseDmg = CONFIG.heroPulseBaseDamage
       * CONFIG.soulDebtMicroPulseDmgMult * (this.perks.heroDmgGlobal || 1);
     for (const ev of queue) {
       this.hero.spawnPulseRing(ev.x, ev.z, radius, 0xddaaff, 0.55);
@@ -1176,7 +1172,7 @@ export class Game {
       {
         const dx = cx - ev.x, dz = cz - ev.z;
         if (dx*dx + dz*dz < (radius + CONFIG.crystalRadius) * (radius + CONFIG.crystalRadius)) {
-          this._damageCrystal(crystalDmg * this.tether.crystalVulnMult);
+          this._damageCrystal(crystalDmg);
           this.crystal.hitFlash = Math.max(this.crystal.hitFlash, 0.22);
         }
       }
@@ -1201,7 +1197,7 @@ export class Game {
     const cx = this.crystal.position.x, cz = this.crystal.position.z;
     const r = CONFIG.kineticReversalRadius;
     const r2 = r * r;
-    const dmg = CONFIG.kineticReversalDamage * this.tether.heroDmgMultNatural * (this.perks.heroDmgGlobal || 1);
+    const dmg = CONFIG.kineticReversalDamage * (this.perks.heroDmgGlobal || 1);
 
     // 視覺：藍色反相環
     this.hero.spawnPulseRing(hx, hz, r, 0x44aaff, 0.8);
@@ -1317,7 +1313,6 @@ export class Game {
     const hpPct = Math.max(0, this.crystal.hp / this.crystal.maxHp);
     this.ui.hpBar.style.width = (hpPct * 100).toFixed(1) + '%';
     this.ui.hpText.textContent = `${Math.ceil(this.crystal.hp)} / ${this.crystal.maxHp}`;
-    this.ui.tether.textContent = (this.tether.severed ? '✕ ' : '') + '×' + this.tether.heroDmgMult.toFixed(2);
     this.ui.kills.textContent = this.kills;
     this.ui.time.textContent = this.elapsed.toFixed(0) + 's';
     const totalEnemies = this.swarm.activeCount + this.slingers.activeCount + this.splitters.activeCount + this.mites.activeCount
@@ -1752,7 +1747,6 @@ export class Game {
       soulDebt: this.perks.soulDebt,
       volatileLoop: this.perks.volatileLoop,
       regicide: this.perks.regicide,
-      spatialFolding: this.perks.spatialFolding,
       massCollapse: this.perks.massCollapse,
       kineticReversal: this.perks.kineticReversal,
       criticalSuspension: this.perks.criticalSuspension,
@@ -1775,7 +1769,6 @@ export class Game {
     this.perks.soulDebt = false;
     this.perks.volatileLoop = false;
     this.perks.regicide = false;
-    this.perks.spatialFolding = false;
     this.perks.massCollapse = false;
     this.perks.kineticReversal = false;
     this.perks.criticalSuspension = false;

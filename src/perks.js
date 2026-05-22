@@ -1,7 +1,7 @@
 import { CONFIG } from './config.js';
 
-// === 9 個天賦定義 ===
-// 4 個有獨特邏輯（active flag），其餘是純數值加成（stat mod）
+// === 14 個天賦定義 ===
+// 數個有獨特邏輯（active flag），其餘是純數值加成（stat mod）
 
 export const PERKS = {
   fang_lunge: {
@@ -17,8 +17,8 @@ export const PERKS = {
   lone_wolf: {
     id: 'lone_wolf',
     name: 'Lone Wolf',
-    nameCn: '孤狼',
-    desc: '繫帶 > 15 時線性 ×1→×2 傷害；被擠在水晶旁 (<10) 且周圍 150+ 怪則強制 ×1.4 困獸暴擊',
+    nameCn: '困獸',
+    desc: '被擠在水晶旁 (距離 <10) 且周圍 150+ 怪時，脈衝傷害 ×1.4',
     rarity: 'rare',
     icon: '🐺',
     weight: 0.75,
@@ -126,16 +126,6 @@ export const PERKS = {
     weight: 0.75,
     apply(g) { g.perks.regicide = true; }
   },
-  spatial_folding: {
-    id: 'spatial_folding',
-    name: 'Spatial Folding',
-    nameCn: '空間折疊',
-    desc: '繫帶距離 ≥ 16 時，脈衝對場上 HP 最高目標造成 ×1.5 傷害（自動鎖王）',
-    rarity: 'legendary',
-    icon: '🌌',
-    weight: 0.45,
-    apply(g) { g.perks.spatialFolding = true; }
-  },
   mass_collapse: {
     id: 'mass_collapse',
     name: 'Mass Collapse',
@@ -201,7 +191,7 @@ export const FORBIDDEN_PERKS = {
     id: 'volatile_loop',
     name: 'Volatile Loop',
     nameCn: '不穩定迴路',
-    desc: '脈衝傷害 +150%，但每 10 秒繫帶會自發失控斷裂 1.5 秒（期間倍率歸 1）',
+    desc: '脈衝傷害 +150%，但每 10 秒繫帶會自發失控斷裂 1.5 秒（期間水晶停止回血）',
     icon: '⚠️',
     isForbidden: true,
     applyStart(g, CONFIG) {

@@ -192,7 +192,6 @@ export class AudioMgr {
 /**
  * W4: 環境音層 — 用持續振盪器即時合成
  * - 低頻 drone：怪物密度越高、音量越大、頻率越低（壓迫感）
- * - 高頻 tension whine：繫帶距離越遠越尖銳（聲音外顯機制）
  * - Boss drop：500ms 全靜音 + sub-bass 重音
  */
 class Ambient {
@@ -262,7 +261,7 @@ class Ambient {
     this.started = true;
   }
 
-  update(rawDt, tetherDistance, tetherMax, enemyCount, bossActive) {
+  update(rawDt, enemyCount, bossActive) {
     if (!this.started) return;
     // 注意：不再因為 muted 提早 return — mute 由 master gain 控制
     // 之前的 bug：muted 時 ambient gain 永遠卡在初始 0，解 mute 後也不會復活

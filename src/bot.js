@@ -28,9 +28,8 @@ const PERK_PRIORITY = {
   regicide:             45,  // 對 boss 強，前期沒用
   critical_suspension:  35,
   soul_vacuum:          25,
-  spatial_folding:      10,  // 需要繫帶 ≥16，bot 不採極端距離
   soul_debt:             5,  // 軌道機制 bot 不會用
-  lone_wolf:             5,  // 只對 1-2 隻怪有用，bot 是清屏型
+  lone_wolf:             5,  // 困獸模式 bot 很少會被擠到水晶旁
   mass_collapse:         1,  // 移速 -20% 直接拖累 bot 移動
 };
 
@@ -178,8 +177,8 @@ export function botThink(game, dt) {
     if (nearestThreat && nearestThreatDist < DASH_DANGER_RADIUS) wantDash = true;
     // 攻擊性 dash：路徑上有 3+ 隻怪
     if (dashHitCount >= DASH_OFFENSIVE_MIN_TARGETS) wantDash = true;
-    // 高張力 tether + 怪潮密集 → 主動 dash 觸發 Kinetic Reversal AoE
-    if (game._botDashTimer <= 0 && game.tether.heroDmgMult >= 1.5 && threatN >= 3) wantDash = true;
+    // 怪潮密集 → 主動 dash 觸發 Kinetic Reversal AoE
+    if (game._botDashTimer <= 0 && threatN >= 3) wantDash = true;
     if (wantDash) {
       bot.triggerDash();
       game._botDashTimer = DASH_PROC_INTERVAL;
@@ -312,7 +311,6 @@ export function installBotHooks(game, cfg) {
         level: game.level,
         hp: +game.crystal.hp.toFixed(0),
         enemies: totalEnemies,
-        tetherMult: +game.tether.heroDmgMult.toFixed(2),
       });
     }
 

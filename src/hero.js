@@ -253,11 +253,10 @@ export class Hero {
    * AOE 脈衝攻擊（覆蓋多 swarm）
    * @param swarms array of swarm
    * @param hashes array of hash（一一對應）
-   * @param tetherDmgMult 繫帶倍率（已含 sever 後的歸 1）
-   * @param tetherDistance 用於 Spatial Folding 門檻判定
+   * @param tetherDistance 用於 Lone Wolf 困獸密度偵測（距離 < 內圈才啟動）
    * @param orbitalSoulCount Soul Debt 軌道靈魂數，每顆 +3% 傷害
    */
-  autoAttack(swarms, hashes, tetherDmgMult, tetherDistance = 0, orbitalSoulCount = 0) {
+  autoAttack(swarms, hashes, tetherDistance = 0, orbitalSoulCount = 0) {
     const hits = [];
     if (this.pulseTimer > 0) return hits;
     // AoE 重整 2026-05-21：Pierce 把脈衝間隔 +0.4 秒（trade-off：對 boss 單體 +60% 傷害但降頻）
@@ -292,7 +291,7 @@ export class Hero {
         if (dx*dx + dz*dz > r2) continue;
 
         const crit = Math.random() < (CONFIG.heroPulseCritChance + (this.perks?.critChanceBonus || 0));
-        let dmg = CONFIG.heroPulseBaseDamage * tetherDmgMult * soulDebtBonus * pierceMult * volatilePulseMult;
+        let dmg = CONFIG.heroPulseBaseDamage * soulDebtBonus * pierceMult * volatilePulseMult;
         if (crit) dmg *= (CONFIG.heroPulseCritMult + (this.perks?.critMultBonus || 0));
         // W4 Regicide: 對 Boss 傷害 +50%
         if (this.perks?.regicide && swarm.isBoss) dmg *= CONFIG.regicideBossDmgMult;
@@ -309,43 +308,20 @@ export class Hero {
       }
     }
 
-    // Lone Wolf — Gemini Tether-Tension-Buffer 重構
-    // 外圈：tetherDistance > loneWolfDistanceTrigger 時線性加成（1.0 → loneWolfDistanceMaxMult）
-    // 困獸：距離 < loneWolfInnerDistance 且周圍密度 > loneWolfDensityThreshold → 強制 ×loneWolfTrappedMult
-    if (this.perks?.loneWolf && hits.length > 0) {
-      let loneMult = 1.0;
-      if (tetherDistance > CONFIG.loneWolfDistanceTrigger) {
-        const span = Math.max(0.01, CONFIG.loneWolfDistanceCap - CONFIG.loneWolfDistanceTrigger);
-        const t = Math.min(1, (tetherDistance - CONFIG.loneWolfDistanceTrigger) / span);
-        loneMult = 1 + (CONFIG.loneWolfDistanceMaxMult - 1) * t;
-      } else if (tetherDistance < CONFIG.loneWolfInnerDistance) {
-        // 困獸偵測：用 hash 查詢半徑內活著的怪物
-        let nearby = 0;
-        const dr = CONFIG.loneWolfDensityRadius;
-        for (let s = 0; s < swarms.length; s++) {
-          const cand = hashes[s].queryXZ(this.position.x, this.position.z, dr);
-          const swarm = swarms[s];
-          for (let k = 0; k < cand.length; k++) {
-            if (swarm.alive[cand[k]]) nearby++;
-          }
+    // Lone Wolf 困獸：距離 < loneWolfInnerDistance 且周圍密度 > loneWolfDensityThreshold → 強制 ×loneWolfTrappedMult
+    if (this.perks?.loneWolf && hits.length > 0 && tetherDistance < CONFIG.loneWolfInnerDistance) {
+      let nearby = 0;
+      const dr = CONFIG.loneWolfDensityRadius;
+      for (let s = 0; s < swarms.length; s++) {
+        const cand = hashes[s].queryXZ(this.position.x, this.position.z, dr);
+        const swarm = swarms[s];
+        for (let k = 0; k < cand.length; k++) {
+          if (swarm.alive[cand[k]]) nearby++;
         }
-        if (nearby > CONFIG.loneWolfDensityThreshold) loneMult = CONFIG.loneWolfTrappedMult;
       }
-      if (loneMult !== 1.0) {
-        for (const h of hits) h.dmg *= loneMult;
+      if (nearby > CONFIG.loneWolfDensityThreshold) {
+        for (const h of hits) h.dmg *= CONFIG.loneWolfTrappedMult;
       }
-    }
-
-    // W4 Spatial Folding: 繫帶距離 ≥ 門檻時，最高 HP 目標吃 ×2
-    if (this.perks?.spatialFolding && tetherDistance >= CONFIG.spatialFoldingDistance && hits.length > 0) {
-      let maxHit = hits[0], maxHp = hits[0].swarm.hp[hits[0].idx];
-      for (let k = 1; k < hits.length; k++) {
-        const h = hits[k];
-        const hp = h.swarm.hp[h.idx];
-        if (hp > maxHp) { maxHp = hp; maxHit = h; }
-      }
-      maxHit.dmg *= CONFIG.spatialFoldingMult;
-      maxHit.crit = true;  // 視覺強調
     }
 
     // 結算傷害 + 擊退
