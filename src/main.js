@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { Game } from './game.js';
 import { hasAnySlot, getSlotSummary, SLOT_COUNT } from './meta.js';
 import { parseBotCfg } from './bot.js';
+import { showIntro } from './intro.js';
 
 // === Bot 模式：?bot=1 自動跑 + 自動 AI；?headless=1 把 RAF 換成最快的 setTimeout ===
 const botCfg = parseBotCfg(location.search);
@@ -59,6 +60,12 @@ function startGame(loadSlotN = null) {
   window.__game = game;
 }
 
+// 新遊戲入口：先播世界觀 intro，結束才真正建構 Game
+// （讀取 slot 不走這條路 — 老玩家不必再看一次）
+function startNewGameWithIntro() {
+  showIntro(() => startGame(null));
+}
+
 /** 偵測到任一 slot 有存檔 → 顯示 boot menu */
 function showBootMenu() {
   const overlay = document.getElementById('boot-menu');
@@ -90,7 +97,7 @@ function showBootMenu() {
     const slot = target.getAttribute('data-slot');
     if (action === 'new') {
       overlay.classList.remove('show');
-      startGame(null);
+      startNewGameWithIntro();
     } else if (slot && !target.hasAttribute('disabled')) {
       overlay.classList.remove('show');
       startGame(parseInt(slot, 10));
@@ -132,10 +139,11 @@ function showBootMenu() {
 }
 
 if (botCfg) {
-  // bot 模式跳過 boot menu，直接開新局
+  // bot 模式跳過 boot menu 與 intro，直接開新局
   startGame(null);
 } else if (hasAnySlot()) {
   showBootMenu();
 } else {
-  startGame(null);
+  // 第一次開遊戲，沒有任何 slot → 直接走 intro 路徑
+  startNewGameWithIntro();
 }

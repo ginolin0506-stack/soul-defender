@@ -848,6 +848,131 @@
     }
 
     /* === Perk Overlay === */
+    /* === 開場世界觀 intro overlay === */
+    #intro-overlay {
+      position: fixed; inset: 0;
+      display: none;
+      background: #050510;
+      color: #f0e8ff;
+      z-index: 30;
+      overflow: hidden;
+    }
+    #intro-overlay.show {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      animation: intro-overlay-in 0.7s ease-out both;
+    }
+    #intro-overlay.fading { animation: intro-overlay-out 0.48s ease-in both; }
+    @keyframes intro-overlay-in { from { opacity: 0; } to { opacity: 1; } }
+    @keyframes intro-overlay-out { from { opacity: 1; } to { opacity: 0; } }
+    #intro-overlay::before {
+      content: '';
+      position: absolute; inset: 0;
+      background: radial-gradient(ellipse at center, rgba(60,30,120,0.22), transparent 70%);
+      pointer-events: none;
+    }
+    #intro-overlay::after {
+      content: '';
+      position: absolute; inset: 0;
+      background: repeating-linear-gradient(0deg, transparent 0, transparent 2px, rgba(255,255,255,0.018) 2px, rgba(255,255,255,0.018) 3px);
+      pointer-events: none;
+      animation: intro-scan 6s linear infinite;
+    }
+    @keyframes intro-scan {
+      from { background-position: 0 0; }
+      to   { background-position: 0 40px; }
+    }
+    .intro-skip {
+      position: absolute; top: 22px; right: 26px;
+      font-size: 12px; letter-spacing: 4px;
+      color: rgba(255,255,255,0.6);
+      padding: 9px 18px;
+      border: 1px solid rgba(255,255,255,0.28);
+      border-radius: 4px;
+      background: rgba(0,0,0,0.45);
+      cursor: pointer;
+      transition: color 0.2s, border-color 0.2s, background 0.2s, transform 0.2s;
+      z-index: 31;
+      font-family: inherit;
+    }
+    .intro-skip:hover {
+      color: #fff;
+      border-color: rgba(255,255,255,0.7);
+      background: rgba(255,255,255,0.08);
+      transform: translateX(2px);
+    }
+    .intro-scene {
+      max-width: 760px;
+      padding: 0 48px;
+      text-align: center;
+      position: relative;
+      z-index: 1;
+    }
+    .intro-title {
+      font-size: 40px; font-weight: 600;
+      letter-spacing: 10px; padding-left: 10px;
+      color: #f0e8ff;
+      text-shadow: 0 0 32px rgba(178,102,255,0.55), 0 0 6px rgba(255,255,255,0.45);
+      margin-bottom: 36px;
+      min-height: 56px;
+      animation: intro-title-in 0.7s cubic-bezier(.2,.8,.2,1) both;
+    }
+    @keyframes intro-title-in {
+      from { opacity: 0; transform: translateY(22px); letter-spacing: 18px; padding-left: 18px; }
+      to   { opacity: 1; transform: translateY(0);    letter-spacing: 10px; padding-left: 10px; }
+    }
+    .intro-body {
+      font-size: 17px; line-height: 2;
+      letter-spacing: 2px;
+      color: rgba(240,232,255,0.9);
+      min-height: 110px;
+    }
+    .intro-foot {
+      margin-top: 38px;
+      font-size: 15px; letter-spacing: 7px;
+      color: #66ffd9;
+      opacity: 0;
+      transition: opacity 0.9s ease-out;
+      text-shadow: 0 0 18px rgba(102,255,217,0.4);
+    }
+    .intro-foot.show { opacity: 0.92; }
+    .intro-progress {
+      position: absolute;
+      bottom: 92px; left: 50%;
+      transform: translateX(-50%);
+      display: flex; gap: 10px;
+      z-index: 1;
+    }
+    .intro-progress-dot {
+      width: 7px; height: 7px; border-radius: 50%;
+      background: rgba(255,255,255,0.18);
+      transition: background 0.3s, box-shadow 0.3s, transform 0.3s;
+    }
+    .intro-progress-dot.active {
+      background: rgba(178,102,255,0.9);
+      box-shadow: 0 0 10px rgba(178,102,255,0.7);
+      transform: scale(1.2);
+    }
+    .intro-progress-dot.done {
+      background: rgba(102,255,217,0.4);
+    }
+    .intro-hint {
+      position: absolute;
+      bottom: 42px; left: 50%;
+      transform: translateX(-50%);
+      font-size: 11px; letter-spacing: 4px;
+      color: rgba(255,255,255,0.5);
+      animation: intro-hint-pulse 2.2s ease-in-out infinite;
+      z-index: 1;
+      pointer-events: none;
+    }
+    @keyframes intro-hint-pulse {
+      0%, 100% { opacity: 0.3; }
+      50%      { opacity: 0.7; }
+    }
+
     /* === 暫停 overlay（玩家按 P 觸發） === */
     #pause-overlay {
       position: fixed; inset: 0;
@@ -1060,6 +1185,17 @@
   <div id="damage-layer"></div>
 
   <div id="tutorial-toast"><span id="tutorial-text"></span></div>
+
+  <div id="intro-overlay">
+    <button class="intro-skip" id="intro-skip">跳過 ▶</button>
+    <div class="intro-scene">
+      <div class="intro-title" id="intro-title"></div>
+      <div class="intro-body" id="intro-body"></div>
+      <div class="intro-foot" id="intro-foot"></div>
+    </div>
+    <div class="intro-progress" id="intro-progress"></div>
+    <div class="intro-hint">點擊 / Space 繼續</div>
+  </div>
 
   <div id="pause-overlay">
     <div class="pause-title">暫停</div>
