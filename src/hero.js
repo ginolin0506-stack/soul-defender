@@ -8,272 +8,127 @@ export class Hero {
     this.velocity = new THREE.Vector3();
     this.facing = 0;
 
-    // === 2026-05-23 Hero「Wireframe Construct Bot」全面重塑 ===
-    // 參照玩家提供的線框機械昆蟲意象：4 足機械蟻 — 大型雙眼頭、雙觸鬚、faceted 胸節 + 腹節、
-    // 後翹尾針、4 條多關節機械腿，全身 EdgesGeometry 線框疊加營造資料化身體感
-    //
-    // 結構（朝 -Z 是頭部方向，跟原本 facing 系統一致）：
-    //   頭 (-Z, 0.45y) ← 兩眼 + 雙觸鬚 + 雙顎刺
-    //   胸 (中央, 0.55y) ← 兩側突起 + 中央光脈
-    //   腹 (+Z, 0.50y) ← 兩道分節環 + 後翹尾針
-    //   4 腿 ← 肩關節 + 上腿 + 膝關節 + 下腿 + 爪
-    //   腳光環 (-0.85y) ← 地面投影暗示
+    // === 2026-05-23 Hero「Crystal Guardian Construct」重建 ===
+    // 世界觀：玩家是水晶構念體 — 半 AI 半結晶守護單位，造型呼應中央水晶但更具機械感
+    // 結構（自下而上）：六角平台 → 腳光環 → 漸縮下身 → 胸口能量核 → 上身軀幹 →
+    //   雙肩盔 → 頭部感應器 → 前向能量矛 + 雙旋轉光環
     const group = new THREE.Group();
 
-    // === 材質：3 種共用 ===
-    // shellMat 主殼：深藍金屬底 + 強青色 emissive（hitFlash 仍走這條材質）
+    // 共用材質：主體深色金屬青藍 + 高亮細節
     const bodyMat = new THREE.MeshStandardMaterial({
-      color: 0x0a2440,
-      emissive: 0x114488,
-      emissiveIntensity: 0.7,
+      color: 0x1f5566,
+      emissive: 0x004466,
+      emissiveIntensity: 0.55,
       roughness: 0.4,
-      metalness: 0.7,
+      metalness: 0.65,
       flatShading: true,
     });
     this._bodyMat = bodyMat;
 
-    // glowMat：眼睛 / 觸鬚尖 / 尾針 — 全亮，模仿線框圖中的高亮光點
     const glowMat = new THREE.MeshStandardMaterial({
-      color: 0xaaffff,
-      emissive: 0x00ddff,
-      emissiveIntensity: 2.6,
-      roughness: 0.15,
-      metalness: 0.2,
+      color: 0x66ffff,
+      emissive: 0x00ccee,
+      emissiveIntensity: 1.4,
+      roughness: 0.25,
+      metalness: 0.3,
       flatShading: true,
     });
 
-    // jointMat：關節 / 觸鬚桿 / 腿節 — 中等亮度（給觸鬚 / 顎刺用）
-    const jointMat = new THREE.MeshStandardMaterial({
-      color: 0x336688,
+    const accentMat = new THREE.MeshStandardMaterial({
+      color: 0xaaeeff,
       emissive: 0x0088aa,
       emissiveIntensity: 0.9,
       roughness: 0.3,
-      metalness: 0.6,
+      metalness: 0.55,
       flatShading: true,
     });
 
-    // legMat：腿節專用 — 更亮、更冷青，俯視角才看得到（之前腿太暗被身體吃掉）
-    const legMat = new THREE.MeshStandardMaterial({
-      color: 0x66ccff,
-      emissive: 0x44bbee,
-      emissiveIntensity: 1.8,
-      roughness: 0.25,
-      metalness: 0.5,
-      flatShading: true,
-    });
+    // (1) 六角底盤 — 構念體浮空的承載
+    const baseGeo = new THREE.CylinderGeometry(0.55, 0.68, 0.18, 6);
+    const base = new THREE.Mesh(baseGeo, bodyMat);
+    base.position.y = -0.78;
+    base.castShadow = true;
+    group.add(base);
 
-    // 線框材質 — EdgesGeometry overlay 用，重現參考圖的「全身光線」感
-    const wireMat = new THREE.LineBasicMaterial({
-      color: 0x88eeff,
-      transparent: true,
-      opacity: 0.85,
-    });
+    // (2) 漸縮下身 — 八角錐台
+    const lowerGeo = new THREE.CylinderGeometry(0.32, 0.55, 0.55, 8);
+    const lower = new THREE.Mesh(lowerGeo, bodyMat);
+    lower.position.y = -0.4;
+    lower.castShadow = true;
+    group.add(lower);
 
-    // helper：給 mesh 套線框 overlay
-    const addWire = (mesh, threshold = 8) => {
-      const edges = new THREE.EdgesGeometry(mesh.geometry, threshold);
-      const wire = new THREE.LineSegments(edges, wireMat);
-      mesh.add(wire);
-    };
+    // (3) 胸口能量核 — 小水晶八面體（呼應大水晶，是「攜帶資料」的視覺暗示）
+    const coreGeo = new THREE.OctahedronGeometry(0.22, 0);
+    const core = new THREE.Mesh(coreGeo, glowMat);
+    core.position.y = 0;
+    group.add(core);
+    this._chestCore = core;
 
-    // helper：在兩個 3D 點之間放置一個圓柱（自動算長度 + 方向四元數）
-    const _vUp = new THREE.Vector3(0, 1, 0);
-    const _vDir = new THREE.Vector3();
-    const cylBetween = (p1, p2, r1, r2, mat) => {
-      _vDir.set(p2.x - p1.x, p2.y - p1.y, p2.z - p1.z);
-      const len = _vDir.length();
-      _vDir.divideScalar(len);
-      const geo = new THREE.CylinderGeometry(r1, r2, len, 5);
-      const mesh = new THREE.Mesh(geo, mat);
-      mesh.position.set((p1.x + p2.x) / 2, (p1.y + p2.y) / 2, (p1.z + p2.z) / 2);
-      mesh.quaternion.setFromUnitVectors(_vUp, _vDir);
-      mesh.castShadow = true;
-      return mesh;
-    };
+    // (4) 上身軀幹 — 倒置六角柱（肩寬腰窄）
+    const torsoGeo = new THREE.CylinderGeometry(0.42, 0.30, 0.55, 6);
+    const torso = new THREE.Mesh(torsoGeo, bodyMat);
+    torso.position.y = 0.28;
+    torso.castShadow = true;
+    group.add(torso);
 
-    // === 身體 — 壓縮成緊湊 3 節，總長 -Z 到 +Z ≈ 0.7（原 0.97）===
-    // BODY_Y 從 0.58 下調到 -0.30，讓腿能往下伸到地面（腳光環 y=-0.85）附近
-    // 原本 hero.position.y = 0.9，BODY_Y=0.58 時身體浮在世界 y=1.48，腳是浮空的
-    // 改 -0.30 後身體在世界 y=0.60、腳在世界 y=0.10 — 正好觸地
-    const BODY_Y = -0.30;
+    // (5) 雙肩盔 — 對稱兩塊小盔甲
+    for (const sx of [-0.42, 0.42]) {
+      const paulGeo = new THREE.BoxGeometry(0.22, 0.18, 0.32);
+      const paul = new THREE.Mesh(paulGeo, accentMat);
+      paul.position.set(sx, 0.46, 0);
+      paul.castShadow = true;
+      group.add(paul);
+    }
 
-    // === 頭部 — 縮小（半徑 0.30 → 0.22，比胸節 0.36 明顯小一圈）===
-    // 主腦殼：小 icosahedron
-    const head = new THREE.Mesh(new THREE.IcosahedronGeometry(0.22, 1), bodyMat);
-    head.position.set(0, BODY_Y, -0.32);
+    // (6) 頸環 + 頭部感應器
+    const neckGeo = new THREE.CylinderGeometry(0.16, 0.18, 0.1, 6);
+    const neck = new THREE.Mesh(neckGeo, accentMat);
+    neck.position.y = 0.58;
+    group.add(neck);
+
+    const headGeo = new THREE.OctahedronGeometry(0.20, 0);
+    const head = new THREE.Mesh(headGeo, glowMat);
+    head.position.y = 0.80;
     head.castShadow = true;
     group.add(head);
-    addWire(head);
-    this._head = head;
+    this._headCore = head;
 
-    // 前方尖喙 — 圓錐指向 -Z（前方），給「螞蟻吻部」感
-    // 圓錐預設指 +Y，rotation.x = -π/2 將 +Y 轉到 -Z 方向
-    const snoutLen = 0.26;
-    const snout = new THREE.Mesh(new THREE.ConeGeometry(0.15, snoutLen, 6), bodyMat);
-    snout.rotation.x = -Math.PI / 2;
-    // 喙底貼在頭顱前緣 z = head.z - head.r = -0.32 - 0.22 = -0.54
-    // 喙中心位於底再往前 snoutLen/2 = z = -0.54 - 0.13 = -0.67
-    snout.position.set(0, BODY_Y - 0.02, -0.67);
-    snout.castShadow = true;
-    group.add(snout);
-    addWire(snout);
+    // (7) 前向能量矛 — 細桿 + 尖頭（取代原本的小三角）
+    const shaftGeo = new THREE.CylinderGeometry(0.04, 0.04, 0.7, 6);
+    const shaft = new THREE.Mesh(shaftGeo, accentMat);
+    shaft.position.set(0, 0.05, -0.6);
+    shaft.rotation.x = Math.PI / 2;
+    group.add(shaft);
 
-    // 喙尖小發光點（強化「尖端」視覺）
-    const snoutTip = new THREE.Mesh(new THREE.OctahedronGeometry(0.04, 0), glowMat);
-    snoutTip.position.set(0, BODY_Y - 0.02, -0.82);
-    group.add(snoutTip);
+    const lanceTipGeo = new THREE.ConeGeometry(0.10, 0.30, 6);
+    const lanceTip = new THREE.Mesh(lanceTipGeo, glowMat);
+    lanceTip.position.set(0, 0.05, -1.05);
+    lanceTip.rotation.x = -Math.PI / 2;
+    group.add(lanceTip);
 
-    // 雙眼 — 縮小後頭顱對應位置：x 內收到 ±0.09、z 推到 -0.45（在頭顱前緣）
-    for (const sx of [-0.09, +0.09]) {
-      const eye = new THREE.Mesh(new THREE.OctahedronGeometry(0.085, 0), glowMat);
-      eye.position.set(sx, BODY_Y + 0.04, -0.46);
-      group.add(eye);
-      if (sx < 0) this._eyeL = eye; else this._eyeR = eye;
-    }
+    // (8) 雙旋轉光環 — 大外環順時針、小內環逆時針，給構念體 "tech aura" 感
+    const haloOuterGeo = new THREE.TorusGeometry(0.85, 0.025, 6, 36);
+    haloOuterGeo.rotateX(-Math.PI / 2);
+    const haloMat = new THREE.MeshBasicMaterial({
+      color: 0x66ffff,
+      transparent: true,
+      opacity: 0.7,
+    });
+    const haloOuter = new THREE.Mesh(haloOuterGeo, haloMat);
+    haloOuter.position.y = 0.15;
+    group.add(haloOuter);
+    this._haloOuter = haloOuter;
 
-    // 雙觸鬚 — 從頭頂前向上後散開（attach 點對應新頭顱）
-    for (const sx of [-0.08, +0.08]) {
-      const antennaPivot = new THREE.Object3D();
-      antennaPivot.position.set(sx, BODY_Y + 0.15, -0.40);
-      antennaPivot.rotation.x = -0.55;
-      antennaPivot.rotation.z = sx > 0 ? -0.20 : 0.20;
-      group.add(antennaPivot);
+    const haloInnerGeo = new THREE.TorusGeometry(0.55, 0.02, 6, 28);
+    haloInnerGeo.rotateX(-Math.PI / 2);
+    haloInnerGeo.rotateZ(Math.PI / 6);
+    const haloInner = new THREE.Mesh(haloInnerGeo, haloMat);
+    haloInner.position.y = 0.05;
+    group.add(haloInner);
+    this._haloInner = haloInner;
 
-      const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.022, 0.55, 5), jointMat);
-      shaft.position.y = 0.275;
-      antennaPivot.add(shaft);
-
-      const mid = new THREE.Mesh(new THREE.OctahedronGeometry(0.035, 0), jointMat);
-      mid.position.y = 0.30;
-      antennaPivot.add(mid);
-
-      const tip = new THREE.Mesh(new THREE.OctahedronGeometry(0.055, 0), glowMat);
-      tip.position.y = 0.58;
-      antennaPivot.add(tip);
-
-      if (sx < 0) this._antennaL = antennaPivot; else this._antennaR = antennaPivot;
-    }
-
-    // 雙顎刺 — 縮小後 x 內收到 ±0.16（原 0.24），緊貼小頭顱兩側
-    for (const sx of [-1, 1]) {
-      const probePivot = new THREE.Object3D();
-      probePivot.position.set(sx * 0.16, BODY_Y - 0.04, -0.40);
-      probePivot.rotation.z = sx > 0 ? -Math.PI / 2.3 : Math.PI / 2.3;
-      probePivot.rotation.x = -0.25;
-      group.add(probePivot);
-
-      const probe = new THREE.Mesh(new THREE.CylinderGeometry(0.020, 0.025, 0.15, 4), jointMat);
-      probe.position.y = 0.075;
-      probePivot.add(probe);
-
-      const probeTip = new THREE.Mesh(new THREE.OctahedronGeometry(0.035, 0), glowMat);
-      probeTip.position.y = 0.17;
-      probePivot.add(probeTip);
-    }
-
-    // 胸節 — 主軀幹（中央，最高最亮）
-    const thorax = new THREE.Mesh(new THREE.IcosahedronGeometry(0.36, 1), bodyMat);
-    thorax.position.set(0, BODY_Y + 0.05, 0);
-    thorax.castShadow = true;
-    group.add(thorax);
-    addWire(thorax);
-
-    // 胸節中央光脈
-    const spine = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.08, 0.55), glowMat);
-    spine.position.set(0, BODY_Y + 0.20, -0.05);
-    spine.scale.y = 0.5;
-    group.add(spine);
-
-    // 腹節 — 後段稍大（ant-queen 感）
-    const abdomen = new THREE.Mesh(new THREE.IcosahedronGeometry(0.40, 1), bodyMat);
-    abdomen.position.set(0, BODY_Y, 0.30);
-    abdomen.castShadow = true;
-    group.add(abdomen);
-    addWire(abdomen);
-
-    // 一道分節環
-    const ringSeg = new THREE.Mesh(new THREE.TorusGeometry(0.30, 0.022, 4, 16), jointMat);
-    ringSeg.position.set(0, BODY_Y, 0.18);
-    ringSeg.rotation.y = Math.PI / 2;
-    ringSeg.rotation.z = Math.PI / 2;
-    group.add(ringSeg);
-
-    // 尾針 — 從腹部後上翹
-    const tailPivot = new THREE.Object3D();
-    tailPivot.position.set(0, BODY_Y + 0.16, 0.48);
-    tailPivot.rotation.x = -0.45;
-    group.add(tailPivot);
-
-    const tailShaft = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.038, 0.45, 5), jointMat);
-    tailShaft.position.y = 0.225;
-    tailPivot.add(tailShaft);
-
-    const tailTip = new THREE.Mesh(new THREE.ConeGeometry(0.055, 0.18, 5), glowMat);
-    tailTip.position.y = 0.54;
-    tailPivot.add(tailTip);
-
-    this._tail = tailPivot;
-
-    // === 4 條腿 — 用 cylBetween 顯式定位 3D 點，腿明顯外擴 + 膝關節明顯 ===
-    // 設計：每條腿是「肩→（外+略下）膝→（更外+地面）腳」的兩段折線
-    // 肩在身體側邊 (sx≈±0.30)、膝外擴到 ±0.58（明顯超出身體輪廓）、腳落地到 ±0.74
-    // 從上往下看：身體不會擋住腿 — 4 個爪子在 4 個角落
-    // === 2026-05-23 修正：腿改成「knee-out, foot-under」spider 姿勢 ===
-    // 參考圖中腿都收在身體下方、膝關節向外凸 — 腳幾乎在肩正下方
-    // 肩 → 膝（外+上）→ 腳（內回+下到地面）：典型蛛形動物折線
-    this._legs = [];
-    const legSpecs = [
-      // [shoulderX, shoulderZ, kneeX, kneeZ, footX, footZ, phaseOffset]
-      [-0.28, -0.14, -0.50, -0.20, -0.28, -0.26, 0.00],   // 前左：膝外凸到 -0.5，腳收回 -0.28（=肩下）
-      [+0.28, -0.14, +0.50, -0.20, +0.28, -0.26, 0.50],   // 前右
-      [-0.28, +0.22, -0.50, +0.32, -0.28, +0.40, 0.50],   // 後左
-      [+0.28, +0.22, +0.50, +0.32, +0.28, +0.40, 0.00],   // 後右
-    ];
-    const SHOULDER_Y = BODY_Y - 0.05;     // 肩在身體中段 = -0.35
-    const KNEE_Y = BODY_Y + 0.10;          // 膝高於肩 → 蛛形「knee-up」姿勢
-    const FOOT_Y = -0.82;                  // 爪觸地（腳光環 -0.85 之上）
-
-    for (const [sx, sz, kx, kz, fx, fz, phase] of legSpecs) {
-      // 整條腿掛在 legPivot 上 — 走路時旋轉這個 pivot 整條腿一起擺
-      const legPivot = new THREE.Object3D();
-      legPivot.position.set(sx, SHOULDER_Y, sz);
-      group.add(legPivot);
-
-      // 計算 knee / foot 在 pivot 局部座標
-      const shoulderL = new THREE.Vector3(0, 0, 0);
-      const kneeL = new THREE.Vector3(kx - sx, KNEE_Y - SHOULDER_Y, kz - sz);
-      const footL = new THREE.Vector3(fx - sx, FOOT_Y - SHOULDER_Y, fz - sz);
-
-      // 肩關節球（用亮的 legMat，俯視才能看到）
-      const sBall = new THREE.Mesh(new THREE.OctahedronGeometry(0.085, 0), legMat);
-      sBall.position.copy(shoulderL);
-      legPivot.add(sBall);
-
-      // 上腿節：肩 → 膝（粗一倍，亮 legMat）
-      const upper = cylBetween(shoulderL, kneeL, 0.055, 0.070, legMat);
-      legPivot.add(upper);
-
-      // 膝關節球（最亮 glowMat — 4 顆膝球是身體周圍 4 個發光端點）
-      const kBall = new THREE.Mesh(new THREE.OctahedronGeometry(0.080, 0), glowMat);
-      kBall.position.copy(kneeL);
-      legPivot.add(kBall);
-
-      // 下腿節：膝 → 爪
-      const lower = cylBetween(kneeL, footL, 0.040, 0.055, legMat);
-      legPivot.add(lower);
-
-      // 爪尖（亮 glowMat — 4 個發光爪是俯視角的明顯外緣）
-      const claw = new THREE.Mesh(new THREE.ConeGeometry(0.055, 0.12, 4), glowMat);
-      claw.position.copy(footL);
-      claw.position.y -= 0.06;
-      claw.rotation.x = Math.PI;
-      legPivot.add(claw);
-
-      this._legs.push({ pivot: legPivot, phase, baseY: SHOULDER_Y, baseSZ: sz });
-    }
-
-    // === 腳光環（地面位置提示，跟著腿縮成 0.45-0.60，貼合新足跡） ===
-    const ringGeo = new THREE.RingGeometry(0.45, 0.60, 32);
+    // (9) 腳光環（保留原本的呼吸節奏）
+    const ringGeo = new THREE.RingGeometry(0.7, 0.95, 32);
     ringGeo.rotateX(-Math.PI / 2);
     const ringMat = new THREE.MeshBasicMaterial({
       color: 0x66ffff,
@@ -493,41 +348,18 @@ export class Hero {
     const breathe = 0.5 + Math.sin(performance.now() * 0.005) * 0.15;
     this._ring.material.opacity = breathe;
 
-    // === 2026-05-23 Wireframe Bot 動作系統 ===
-    // 注意：上方 breathe 區塊已宣告 const moving；speed 變數則在 dash 區段被用過 → 用新名字 motionSpeed
-    const now = performance.now();
-    const motionSpeed = Math.hypot(this.velocity.x, this.velocity.z);
-
-    // (a) 雙眼脈動 — 緩慢呼吸 + 受傷時亮度爆閃由 hitFlash 在 _bodyMat 上處理，眼本身只做尺度脈動
-    const eyePulse = 1.0 + Math.sin(now * 0.005) * 0.12;
-    if (this._eyeL) this._eyeL.scale.setScalar(eyePulse);
-    if (this._eyeR) this._eyeR.scale.setScalar(eyePulse);
-
-    // (b) 觸鬚擺動 — 慢且小幅，靜止時幾乎不動
-    const antAmp = moving ? 0.10 : 0.02;
-    const antPhase = now * 0.0025;        // 速率減半（0.006→0.0025）
-    if (this._antennaL) this._antennaL.rotation.z = +0.20 + Math.sin(antPhase) * antAmp;
-    if (this._antennaR) this._antennaR.rotation.z = -0.20 - Math.sin(antPhase) * antAmp;
-
-    // (c) 尾針擺動 — 略慢，給「平衡尾巴」的反向擺動感
-    if (this._tail) {
-      this._tail.rotation.z = Math.sin(now * 0.004) * 0.18;
-      this._tail.rotation.x = -0.45 + Math.sin(now * 0.005) * 0.05;
+    // 2026-05-23：雙旋轉光環 + 胸口/頭部能量核脈動
+    if (this._haloOuter) this._haloOuter.rotation.y += dt * 1.4;
+    if (this._haloInner) this._haloInner.rotation.y -= dt * 2.1;
+    const pulse = 1.0 + Math.sin(performance.now() * 0.008) * 0.12;
+    if (this._chestCore) {
+      this._chestCore.rotation.y += dt * 1.8;
+      this._chestCore.rotation.x += dt * 0.9;
+      this._chestCore.scale.setScalar(pulse);
     }
-
-    // (d) 四腿走路循環 — 對角步態（前左+後右 / 前右+後左）
-    // 2026-05-23 修正：舊版 phase rate 0.013 × 5.5 = 11 Hz 過快「腳抖動」；
-    // 改為 0.005 × 1.3 ≈ 1 Hz（每秒一步），idle 完全靜止
-    if (this._legs) {
-      const walkSpeed = Math.min(1.2, motionSpeed / CONFIG.heroSpeed);
-      const walkPhase = now * 0.005 * (moving ? walkSpeed + 0.3 : 0);
-      const swingAmp = moving ? 0.10 * walkSpeed : 0;       // 振幅減半（0.22→0.10）
-      const liftAmp = moving ? 0.04 * walkSpeed : 0;         // 抬腳減半（0.12→0.04）
-      for (const leg of this._legs) {
-        const t = walkPhase + leg.phase * Math.PI * 2;
-        leg.pivot.rotation.x = Math.sin(t) * swingAmp;
-        leg.pivot.position.y = leg.baseY + Math.max(0, Math.sin(t)) * liftAmp;
-      }
+    if (this._headCore) {
+      this._headCore.rotation.y -= dt * 1.2;
+      this._headCore.rotation.z += dt * 0.6;
     }
 
     // === 受傷無敵 / 鎖回血 / 受傷視覺衰減 ===
