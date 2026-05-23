@@ -200,18 +200,20 @@ export class Hero {
     // 設計：每條腿是「肩→（外+略下）膝→（更外+地面）腳」的兩段折線
     // 肩在身體側邊 (sx≈±0.30)、膝外擴到 ±0.58（明顯超出身體輪廓）、腳落地到 ±0.74
     // 從上往下看：身體不會擋住腿 — 4 個爪子在 4 個角落
-    // 腿外擴極大 — 俯視角主要可見元素；腳位幾乎跟身體一樣寬度才能在縮放後仍看得到
+    // === 2026-05-23 修正：腿改成「knee-out, foot-under」spider 姿勢 ===
+    // 參考圖中腿都收在身體下方、膝關節向外凸 — 腳幾乎在肩正下方
+    // 肩 → 膝（外+上）→ 腳（內回+下到地面）：典型蛛形動物折線
     this._legs = [];
     const legSpecs = [
       // [shoulderX, shoulderZ, kneeX, kneeZ, footX, footZ, phaseOffset]
-      [-0.30, -0.14, -0.72, -0.28, -1.00, -0.42, 0.00],   // 前左
-      [+0.30, -0.14, +0.72, -0.28, +1.00, -0.42, 0.50],   // 前右
-      [-0.30, +0.22, -0.72, +0.42, -1.00, +0.55, 0.50],   // 後左
-      [+0.30, +0.22, +0.72, +0.42, +1.00, +0.55, 0.00],   // 後右
+      [-0.28, -0.14, -0.50, -0.20, -0.28, -0.26, 0.00],   // 前左：膝外凸到 -0.5，腳收回 -0.28（=肩下）
+      [+0.28, -0.14, +0.50, -0.20, +0.28, -0.26, 0.50],   // 前右
+      [-0.28, +0.22, -0.50, +0.32, -0.28, +0.40, 0.50],   // 後左
+      [+0.28, +0.22, +0.50, +0.32, +0.28, +0.40, 0.00],   // 後右
     ];
-    const SHOULDER_Y = BODY_Y - 0.10;     // 肩略低於身體中心 = -0.40 local
-    const KNEE_Y = SHOULDER_Y - 0.22;      // 膝在肩下方明顯偏外
-    const FOOT_Y = -0.80;                  // 爪觸地（腳光環 -0.85 略上）
+    const SHOULDER_Y = BODY_Y - 0.05;     // 肩在身體中段 = -0.35
+    const KNEE_Y = BODY_Y + 0.10;          // 膝高於肩 → 蛛形「knee-up」姿勢
+    const FOOT_Y = -0.82;                  // 爪觸地（腳光環 -0.85 之上）
 
     for (const [sx, sz, kx, kz, fx, fz, phase] of legSpecs) {
       // 整條腿掛在 legPivot 上 — 走路時旋轉這個 pivot 整條腿一起擺
@@ -252,8 +254,8 @@ export class Hero {
       this._legs.push({ pivot: legPivot, phase, baseY: SHOULDER_Y, baseSZ: sz });
     }
 
-    // === 腳光環（保留 — 地面位置提示） ===
-    const ringGeo = new THREE.RingGeometry(0.7, 0.95, 32);
+    // === 腳光環（地面位置提示，跟著腿縮成 0.45-0.60，貼合新足跡） ===
+    const ringGeo = new THREE.RingGeometry(0.45, 0.60, 32);
     ringGeo.rotateX(-Math.PI / 2);
     const ringMat = new THREE.MeshBasicMaterial({
       color: 0x66ffff,
@@ -483,9 +485,9 @@ export class Hero {
     if (this._eyeL) this._eyeL.scale.setScalar(eyePulse);
     if (this._eyeR) this._eyeR.scale.setScalar(eyePulse);
 
-    // (b) 觸鬚擺動 — 移動時左右反相擺，靜止時微微抖
-    const antAmp = moving ? 0.20 : 0.08;
-    const antPhase = now * 0.006;
+    // (b) 觸鬚擺動 — 慢且小幅，靜止時幾乎不動
+    const antAmp = moving ? 0.10 : 0.02;
+    const antPhase = now * 0.0025;        // 速率減半（0.006→0.0025）
     if (this._antennaL) this._antennaL.rotation.z = +0.20 + Math.sin(antPhase) * antAmp;
     if (this._antennaR) this._antennaR.rotation.z = -0.20 - Math.sin(antPhase) * antAmp;
 
@@ -495,19 +497,18 @@ export class Hero {
       this._tail.rotation.x = -0.45 + Math.sin(now * 0.005) * 0.05;
     }
 
-    // (d) 四腿走路循環 — legPivot 是肩關節處，整條腿繞它旋轉
-    // 對角步態（前左+後右 同相、前右+後左 同相反相）
+    // (d) 四腿走路循環 — 對角步態（前左+後右 / 前右+後左）
+    // 2026-05-23 修正：舊版 phase rate 0.013 × 5.5 = 11 Hz 過快「腳抖動」；
+    // 改為 0.005 × 1.3 ≈ 1 Hz（每秒一步），idle 完全靜止
     if (this._legs) {
       const walkSpeed = Math.min(1.2, motionSpeed / CONFIG.heroSpeed);
-      const walkPhase = now * 0.013 * (moving ? walkSpeed * 4 + 1.5 : 0.4);
+      const walkPhase = now * 0.005 * (moving ? walkSpeed + 0.3 : 0);
+      const swingAmp = moving ? 0.10 * walkSpeed : 0;       // 振幅減半（0.22→0.10）
+      const liftAmp = moving ? 0.04 * walkSpeed : 0;         // 抬腳減半（0.12→0.04）
       for (const leg of this._legs) {
         const t = walkPhase + leg.phase * Math.PI * 2;
-        // 整條腿前後擺（X 軸），振幅依移動速度
-        const swingAmp = moving ? 0.22 * walkSpeed : 0.04;
         leg.pivot.rotation.x = Math.sin(t) * swingAmp;
-        // 抬腳：當 sin > 0 時把腳尖抬起（pivot 向外側仰）— 給「踩步」感
-        const lift = moving ? Math.max(0, Math.sin(t)) * 0.12 * walkSpeed : 0;
-        leg.pivot.position.y = leg.baseY + lift;
+        leg.pivot.position.y = leg.baseY + Math.max(0, Math.sin(t)) * liftAmp;
       }
     }
 
