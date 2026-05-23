@@ -1939,5 +1939,7 @@ export class Game {
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(w, h);
     this.effects.onResize();
+    // 2026-05-23 hero LineMaterial 線寬以 px 計算，必須跟 viewport 同步
+    if (this.hero && this.hero.onResize) this.hero.onResize(w, h);
   }
 }
