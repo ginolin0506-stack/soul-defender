@@ -127,6 +127,14 @@ export class Game {
       if (fp && fp.applyStart) fp.applyStart(this, CONFIG);
     }
 
+    // 2026-05-23 玩家反饋「一開始太難清怪、馬上 gameover」：
+    // 還原 2026-05-22 被刪的第一局庇護（最低限：水晶 +200 HP，給新手一個容錯緩衝）
+    // 慢 spawn / 防守型 perk 加權則由現有 firstRunPerkBoostMult 路徑與 earlyRampDuration 共同處理
+    if (this.isFirstRun) {
+      this.crystal.maxHp += CONFIG.firstRunCrystalBonus;
+      this.crystal.hp = this.crystal.maxHp;
+    }
+
     // 開局基礎 BUFF：所有玩家 Lv1 自動獲得「動能逆轉」
     // 玩家反饋 2026-05-21：開局難度過高，給 Dash 一個主動清場手段降低早期壓力
     {
@@ -758,6 +766,13 @@ export class Game {
     this._gainXP(swarm.xpReward || CONFIG.leechXp);
     this.audio.playKill();
     this.tutorial.trigger('kill');
+    // 2026-05-23：每個 swarm 自己宣告 deathFragColor / deathFragScale（小怪小碎、tank 大碎）
+    // boss 不走這條路（已有 trauma+chroma 處理），只給小怪
+    if (!swarm.isBoss) {
+      const color = swarm.deathFragColor ?? 0xff5566;
+      const scale = swarm.deathFragScale ?? 1.0;
+      this.effects.spawnDeathBurst(x, z, color, scale);
+    }
     if (swarm.isBoss) {
       const souls = swarm === this.nexus ? CONFIG.nexusKillSouls : CONFIG.bossKillSouls;
       this._impact(swarm === this.nexus ? 0.25 : 0.18);   // W5: bullet time hook
@@ -793,10 +808,22 @@ export class Game {
   }
 
   _spawnLogic(rawDt) {
+    // 2026-05-23 玩家要求「場上各類小怪總量要有限制」：全域 trash 上限（不含 boss）
+    // 達上限直接早退 — 所有類型本幀都不 spawn，直到玩家殺出空缺
+    const totalCap = this.endlessMode ? CONFIG.endlessMaxTotalEnemies : CONFIG.maxTotalEnemies;
+    const totalTrash = this.swarm.activeCount + this.slingers.activeCount
+      + this.splitters.activeCount + this.mites.activeCount
+      + this.sentinels.activeCount + this.wraiths.activeCount
+      + this.lancers.activeCount + this.conduits.activeCount + this.mires.activeCount;
+    if (totalTrash >= totalCap) return;
+
     // Leech
     this.spawnTimer -= rawDt;
     if (this.spawnTimer <= 0) {
-      this.spawnTimer = CONFIG.spawnInterval;
+      // 2026-05-23：還原第一局前 45s 慢 spawn（interval ×1.25 → 生怪頻率 -20%）
+      const firstWaveSlow = (this.isFirstRun && this.elapsed < CONFIG.firstWaveSlowDuration)
+        ? CONFIG.firstWaveIntervalMult : 1;
+      this.spawnTimer = CONFIG.spawnInterval * firstWaveSlow;
       // W5: 無盡模式提升 spawn target cap
       const baseCap = CONFIG.spawnTargetMax;
       const cap = this.endlessMode ? Math.floor(baseCap * CONFIG.endlessSpawnRampMult) : baseCap;
@@ -865,6 +892,7 @@ export class Game {
         );
         if (this.wraiths.activeCount < target) {
           this.wraiths.spawnBurst(CONFIG.wraithSpawnBurst, CONFIG.spawnRingRadiusMin + 2, CONFIG.spawnRingRadiusMax);
+          if (this.wraiths.activeCount >= 1) this.tutorial.trigger('wraith');
         }
       }
     }
@@ -883,6 +911,7 @@ export class Game {
           const a = Math.random() * Math.PI * 2;
           const r = CONFIG.spawnRingRadiusMin + Math.random() * (CONFIG.spawnRingRadiusMax - CONFIG.spawnRingRadiusMin);
           this.mites.spawnFrom(Math.cos(a) * r, Math.sin(a) * r, CONFIG.mitesSpawnBurst);
+          this.tutorial.trigger('mites');
         }
       }
     }
@@ -898,6 +927,7 @@ export class Game {
         );
         if (this.sentinels.activeCount < target) {
           this.sentinels.spawnBurst(1, CONFIG.spawnRingRadiusMin + 4, CONFIG.spawnRingRadiusMax + 4);
+          if (this.sentinels.activeCount >= 1) this.tutorial.trigger('sentinel');
         }
       }
     }
@@ -913,6 +943,7 @@ export class Game {
         );
         if (this.lancers.activeCount < target) {
           this.lancers.spawnBurst(CONFIG.lancerSpawnBurst, CONFIG.spawnRingRadiusMin + 2, CONFIG.spawnRingRadiusMax);
+          if (this.lancers.activeCount >= 1) this.tutorial.trigger('lancer');
         }
       }
     }
@@ -928,6 +959,7 @@ export class Game {
         );
         if (this.conduits.activeCount < target) {
           this.conduits.spawnBurst(1, CONFIG.spawnRingRadiusMin + 6, CONFIG.spawnRingRadiusMax + 6);
+          if (this.conduits.activeCount >= 1) this.tutorial.trigger('conduit');
         }
       }
     }
@@ -943,6 +975,7 @@ export class Game {
         );
         if (this.mires.activeCount < target) {
           this.mires.spawnBurst(1, CONFIG.spawnRingRadiusMin, CONFIG.spawnRingRadiusMax);
+          if (this.mires.activeCount >= 1) this.tutorial.trigger('mire');
         }
       }
     }
@@ -1395,7 +1428,8 @@ export class Game {
     this.tutorial.trigger('levelup');
     // 2026-05-22：移除第一局防守型 perk 加權，所有局選池一致
     // 傳完整 taken 列表（含重複），讓 rollPerkChoices 能正確算 stackable perk 的 maxStacks
-    const choices = rollPerkChoices(this.perks.taken, 3, false);
+    // 2026-05-23：還原第一局防守型 perk 加權（aegis/crystallize/bloom/swift_step/crit_frenzy ×2.5）
+    const choices = rollPerkChoices(this.perks.taken, 3, this.isFirstRun);
     // W6 Soul Imprint: 第一次升級保證烙印的天賦出現在三選一中
     // B21: 用「還沒拿過任何 perk」判定首升，避免一次升 2+ 級時誤判
     if (this.perks.taken.length === 0 && this.meta.imprintUnlocked && this.meta.imprinted) {

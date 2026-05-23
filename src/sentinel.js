@@ -1,7 +1,57 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { CONFIG } from './config.js';
 import { SpatialHash } from './spatialHash.js';
 import { injectFx } from './glitch.js';
+
+/**
+ * 2026-05-23 Sentinel「Memory Mainframe」精緻化
+ * 結構：寬底盤 + 兩層機殼塊 + 4 個側面端口 + 頂尖天線 + 散熱柵
+ */
+function buildSentinelGeo() {
+  const r = CONFIG.sentinelRadius;
+  const parts = [];
+  // 寬六角底盤
+  const base = new THREE.CylinderGeometry(r * 0.95, r * 1.05, r * 0.35, 6);
+  base.translate(0, -r * 0.55, 0);
+  parts.push(base);
+  // 主機殼下層（大方塊）
+  const chassisLower = new THREE.BoxGeometry(r * 1.5, r * 0.55, r * 1.5);
+  chassisLower.translate(0, -r * 0.12, 0);
+  parts.push(chassisLower);
+  // 主機殼上層（略小方塊，產生階梯感）
+  const chassisUpper = new THREE.BoxGeometry(r * 1.25, r * 0.50, r * 1.25);
+  chassisUpper.translate(0, r * 0.42, 0);
+  parts.push(chassisUpper);
+  // 4 個側面端口（四個方向各一個小盒子，散熱孔感）
+  const portOffsets = [
+    [+r * 0.78, 0, 0],
+    [-r * 0.78, 0, 0],
+    [0, 0, +r * 0.78],
+    [0, 0, -r * 0.78],
+  ];
+  for (const [px, py, pz] of portOffsets) {
+    const port = new THREE.BoxGeometry(r * 0.30, r * 0.30, r * 0.12);
+    port.translate(px, py, pz);
+    parts.push(port);
+  }
+  // 頂尖天線桿
+  const antennaShaft = new THREE.CylinderGeometry(r * 0.06, r * 0.06, r * 0.55, 5);
+  antennaShaft.translate(0, r * 0.95, 0);
+  parts.push(antennaShaft);
+  // 天線頂端球
+  const antennaTip = new THREE.OctahedronGeometry(r * 0.18, 0);
+  antennaTip.translate(0, r * 1.30, 0);
+  parts.push(antennaTip);
+  // 散熱柵（頂部三個薄片）
+  for (let i = -1; i <= 1; i++) {
+    const grill = new THREE.BoxGeometry(r * 1.00, r * 0.06, r * 0.10);
+    grill.translate(0, r * 0.70, i * r * 0.30);
+    parts.push(grill);
+  }
+  // 統一轉非索引避免 Polyhedron / 其餘 indexed 混合報錯
+  return mergeGeometries(parts.map(g => g.index ? g.toNonIndexed() : g));
+}
 
 /**
  * Sentinel — 哨衛 / 慢速高 HP 大型 tank（2026-05-22 新增）
@@ -13,9 +63,12 @@ export class Sentinels {
     this.maxCount = maxCount;
     this.activeCount = 0;
     this.xpReward = CONFIG.sentinelXp;
+    // 2026-05-23 死亡碎片：sentinel 大金屬塊 → 沉重的綠金屬粉碎
+    this.deathFragColor = 0x66ff88;
+    this.deathFragScale = 1.8;
 
-    // 八面體 detail 2 → 質感較細緻；綠色金屬感
-    const geo = new THREE.IcosahedronGeometry(CONFIG.sentinelRadius, 2);
+    // 2026-05-23：機房塔造型（底盤 + 雙層機殼 + 側面端口 + 天線 + 散熱柵）
+    const geo = buildSentinelGeo();
     const mat = new THREE.MeshStandardMaterial({
       color: 0xffffff,
       emissive: 0x224422,

@@ -1,7 +1,42 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { CONFIG } from './config.js';
 import { SpatialHash } from './spatialHash.js';
 import { injectFx } from './glitch.js';
+
+/**
+ * 2026-05-23 Slinger「Data Conjurer Tower」精緻化
+ * 結構：六角底盤 + 漸縮主塔 + 環腰帶 + 兜帽錐 + 浮空法球 + 頂尖
+ */
+function buildSlingerGeo() {
+  const parts = [];
+  // 底盤
+  const base = new THREE.CylinderGeometry(0.45, 0.55, 0.18, 6);
+  base.translate(0, 0.09, 0);
+  parts.push(base);
+  // 主塔（6 角錐台，從底向上漸縮）
+  const tower = new THREE.CylinderGeometry(0.20, 0.42, 0.80, 6);
+  tower.translate(0, 0.58, 0);
+  parts.push(tower);
+  // 環腰帶（細扁圓柱，視覺斷帶）
+  const belt = new THREE.CylinderGeometry(0.32, 0.32, 0.08, 8);
+  belt.translate(0, 0.40, 0);
+  parts.push(belt);
+  // 兜帽錐（罩在主塔頂的尖頂）
+  const hood = new THREE.ConeGeometry(0.32, 0.40, 6);
+  hood.translate(0, 1.18, 0);
+  parts.push(hood);
+  // 浮空法球（在兜帽上方一段距離，類似手持法杖頂上的法球）
+  const orb = new THREE.OctahedronGeometry(0.16, 0);
+  orb.translate(0, 1.62, 0);
+  parts.push(orb);
+  // 頂尖（法球上的針，集中視線）
+  const tip = new THREE.ConeGeometry(0.04, 0.18, 4);
+  tip.translate(0, 1.87, 0);
+  parts.push(tip);
+  // 統一轉非索引避免 Polyhedron / 其餘 indexed 混合報錯
+  return mergeGeometries(parts.map(g => g.index ? g.toNonIndexed() : g));
+}
 
 /**
  * Slinger 遠程怪：
@@ -14,10 +49,12 @@ export class Slingers {
     this.maxCount = maxCount;
     this.activeCount = 0;
     this.xpReward = CONFIG.slingerXp;
+    // 2026-05-23 死亡碎片：藍紫法師塔 → 同色冷光碎裂
+    this.deathFragColor = 0x4477ff;
+    this.deathFragScale = 1.1;
 
-    // W9 升級：4-sided cylinder（窄頂寬底）→ 暗黑法師塔造型
-    const geo = new THREE.CylinderGeometry(0.10, 0.55, 1.4, 4);
-    geo.translate(0, 0.7, 0);
+    // 2026-05-23：六角複合塔造型（底盤 + 塔身 + 兜帽 + 法球）
+    const geo = buildSlingerGeo();
     const mat = new THREE.MeshStandardMaterial({
       color: 0xffffff,
       emissive: 0x002255,

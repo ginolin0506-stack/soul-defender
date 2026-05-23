@@ -1,7 +1,44 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { CONFIG } from './config.js';
 import { SpatialHash } from './spatialHash.js';
 import { injectFx } from './glitch.js';
+
+/**
+ * 2026-05-23 Conduit「Network Beacon」精緻化
+ * 結構：底座六角柱 + 中央主球 (octahedron) + 兩個對稱衛星節點 + 頂部天線
+ */
+function buildConduitGeo() {
+  const r = CONFIG.conduitRadius;
+  const parts = [];
+  // 底座
+  const base = new THREE.CylinderGeometry(r * 0.55, r * 0.7, r * 0.30, 6);
+  base.translate(0, -r * 0.85, 0);
+  parts.push(base);
+  // 連接桿（從底座到主球）
+  const stem = new THREE.CylinderGeometry(r * 0.10, r * 0.10, r * 0.55, 5);
+  stem.translate(0, -r * 0.40, 0);
+  parts.push(stem);
+  // 中央主球（八面體核心）
+  const core = new THREE.OctahedronGeometry(r * 0.85, 1);
+  parts.push(core);
+  // 兩個對稱衛星節點（小八面體，左右環繞）
+  for (const sx of [-1.2, 1.2]) {
+    const sat = new THREE.OctahedronGeometry(r * 0.22, 0);
+    sat.translate(sx * r, 0, 0);
+    parts.push(sat);
+  }
+  // 頂部天線桿
+  const antenna = new THREE.CylinderGeometry(r * 0.05, r * 0.08, r * 0.60, 4);
+  antenna.translate(0, r * 1.10, 0);
+  parts.push(antenna);
+  // 頂部信標球
+  const beacon = new THREE.OctahedronGeometry(r * 0.18, 0);
+  beacon.translate(0, r * 1.50, 0);
+  parts.push(beacon);
+  // 統一轉非索引避免 Polyhedron / 其餘 indexed 混合報錯
+  return mergeGeometries(parts.map(g => g.index ? g.toNonIndexed() : g));
+}
 
 /**
  * Conduit — 導體 / Buff support（2026-05-22 新增）
@@ -13,22 +50,26 @@ import { injectFx } from './glitch.js';
  */
 export class Conduits {
   constructor(scene, maxCount) {
+    // 2026-05-23 死亡碎片：buff 怪琥珀金色散播
+    this.deathFragColor = 0xffcc33;
+    this.deathFragScale = 1.1;
     this.maxCount = maxCount;
     this.activeCount = 0;
     this.xpReward = CONFIG.conduitXp;
 
-    // 八面體（IcosahedronGeometry detail 1）+ 半透明青色
-    const geo = new THREE.OctahedronGeometry(CONFIG.conduitRadius, 1);
+    // 2026-05-23：信標基地造型（底座 + 主球 + 衛星節點 + 天線 + 信標球）
+    // 配色語意：黃/金 = buff 型敵人（hostile-aux），紅 = 直接傷害，綠 = 環境危害
+    const geo = buildConduitGeo();
     const mat = new THREE.MeshStandardMaterial({
       color: 0xffffff,
-      emissive: 0x00cccc,
+      emissive: 0xffaa22,
       emissiveIntensity: 1.2,
       roughness: 0.25,
       metalness: 0.4,
       flatShading: true,
     });
     injectFx(mat, {
-      rimColor: [0.4, 1.0, 1.0],
+      rimColor: [1.0, 0.75, 0.2],
       rimStrength: 1.1,
       aoStrength: 0.2,
       breathAmp: 0.06,
@@ -54,13 +95,13 @@ export class Conduits {
     this.mesh.frustumCulled = false;
     scene.add(this.mesh);
 
-    // 光環 ring — 每隻 Conduit 一個獨立 ring 跟隨；視覺強調 buff 範圍
+    // 光環 ring — 2026-05-23 縮成貼身小指示環；buff 實際是全圖，不要假裝有距離
     this._auraRings = [];
     for (let i = 0; i < maxCount; i++) {
-      const rg = new THREE.RingGeometry(CONFIG.conduitAuraRadius - 0.15, CONFIG.conduitAuraRadius, 64);
+      const rg = new THREE.RingGeometry(CONFIG.conduitAuraRadius - 0.08, CONFIG.conduitAuraRadius, 32);
       rg.rotateX(-Math.PI / 2);
       const rm = new THREE.MeshBasicMaterial({
-        color: 0x66ffff,
+        color: 0xffcc55,
         transparent: true,
         opacity: 0,
         depthWrite: false,
@@ -82,7 +123,8 @@ export class Conduits {
     this.dashHitTag = new Uint8Array(maxCount);
     this._hidden = new Uint8Array(maxCount).fill(1);
 
-    const baseColor = new THREE.Color(0x44ddee);
+    // 2026-05-23：原 0x44ddee（青）→ 改 0xee9933（琥珀金），避免與玩家英雄同色語意
+    const baseColor = new THREE.Color(0xee9933);
     for (let i = 0; i < maxCount; i++) this.mesh.setColorAt(i, baseColor);
     this.mesh.instanceColor.setUsage(THREE.DynamicDrawUsage);
     this.mesh.instanceColor.needsUpdate = true;

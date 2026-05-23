@@ -35,10 +35,12 @@ export const PERKS = {
     id: 'critical_suspension',
     name: 'Critical Suspension',
     nameCn: '臨界滯留',
-    desc: '所有飛行物的速度減慢 50%（敵人子彈不再難閃避）。',
-    rarity: 'legendary',
+    desc: 'Slinger 子彈與 Splitter 炸彈的飛行速度減慢 50%（容易閃避）。',
+    // 2026-05-23 重新分級：原本是 legendary 但只影響兩種飛行物，
+    // 跟 Hex Strike / Soul Debt（傳奇等級的全場威脅）相比落差太大 → 改 rare
+    rarity: 'rare',
     icon: '⏱️',
-    weight: 0.45,
+    weight: 0.7,
     apply(g) { g.perks.criticalSuspension = true; }
   },
 
@@ -47,12 +49,12 @@ export const PERKS = {
     id: 'aegis_charge',
     name: 'Aegis Charge',
     nameCn: '靈光護甲',
-    desc: '每 10 個靈魂回流，水晶獲得護盾（每層 +20 盾，最多 3 層）',
+    desc: '每 8 個靈魂回流，水晶獲得護盾（每層 +20 盾，最多 4 層）',
     rarity: 'rare',
     icon: '🛡️',
     weight: 0.75,
     stackable: true,
-    maxStacks: 3,
+    maxStacks: 4,
     apply(g) { g.perks.aegisStacks += 1; }
   },
   pierce: {
@@ -191,11 +193,12 @@ const ALL_IDS = Object.keys(PERKS);
 // Gemini Onboarding：第一局卡池對「範圍 / 防守 / 安全型」加權
 // 避免新手首抽拿到 Soul Debt / Hex Strike 這種高操作極端 perk
 const FIRST_RUN_BOOST_IDS = new Set([
-  'aegis_charge',   // 護盾，純防守
-  'crystallize',    // 水晶 +HP，純安全
-  'bloom',          // 脈衝範圍，強化清屏
-  'swift_step',     // 移速 + dash CD，容錯
-  'crit_frenzy',    // 暴擊率，純數值線性 buff
+  'aegis_charge',         // 護盾，純防守
+  'crystallize',          // 水晶 +HP，純安全
+  'bloom',                // 脈衝範圍，強化清屏
+  'swift_step',           // 移速 + dash CD，容錯
+  'crit_frenzy',          // 暴擊率，純數值線性 buff
+  'critical_suspension',  // 2026-05-23 改 rare 後加入：投射物半速 = 新手最有感的安全 perk
 ]);
 
 /**

@@ -2,6 +2,44 @@
 // - W7：vertex glitch（kick 起拍時頂點撕裂）
 // - W9：Fresnel Rim Glow + Pseudo-AO + Breathing squash
 // - W10：Procedural Animation — speed-driven crawl、knockback squash、charge stretch、normal tint
+//
+// ============================================================================
+// 2026-05-23：靈魂防線視覺語言 (Visual Language Reference)
+// ============================================================================
+// 世界觀：玩家是「水晶守護者構念體」，戰場是被數據腐蝕的記憶領域。
+// 怪物 = 損毀的數據實體 (corrupted data entities)；死亡 = 資料被刪除（碎片化解構）。
+//
+// 共通視覺規則：
+// 1. 所有材質都走 MeshStandardMaterial + injectFx — PBR 照明保留、上層加 fx
+// 2. flatShading: true 一律啟用 → 低面切面感（不要 PBR 圓滑感）
+// 3. Rim Glow + Pseudo-AO → 數據體積感（內部黯、邊緣亮）
+// 4. Procedural anim（蠕動 / 呼吸 / squash）→ 即使靜止也是「在運算」
+// 5. spawn-in：scale 0→1 + overshoot（smoothstep + sin 微凸，0.25–0.3s）— 數據化身浮現
+// 6. 死亡：effects.spawnDeathBurst(x, z, color, scale) → 自帶顏色的碎片放射
+//
+// 色彩語言（threat 識讀）：
+// - 玩家 / 水晶 / 友軍 → 青 (#00d9ff) + 紫 (#b266ff)。任何**敵人禁用此色**避免敵我混淆
+// - 直接傷害敵 (leech/lancer)  → 紅紫 (#ff3344, #ff4488)
+// - 遠程射手 (slinger)         → 冷藍紫 (#4477ff) — 暗黑魔法塔調性
+// - 揮發性 / 爆炸 (splitter)    → 橘紅 (#ff5522) — 危險警告
+// - 鬼影 / 瞬移 (wraith)        → 神秘紫 (#aa66ff)
+// - Buff 支援型 (conduit)       → 琥珀金 (#ffaa22) — 警告色但非熱（敵援軍）
+// - Tank / 重甲 (sentinel)      → 翠綠金屬 (#66ff88)
+// - 環境危害 (mire)             → 暗綠淤泥 (#44aa55)
+// - Boss                       → 各自獨特配色，全部 isBoss=true 跳過死亡碎片走自己的死亡演出
+//
+// 動作語言：
+// - Hero: 站立呼吸（Y 軸 ±2.5%）、走動前傾 0.18 rad、dash 前傾 0.45 rad，spawn 縮放 0.6s
+// - 雜兵: spawn-in 0.28s overshoot，aSpeed 驅動蠕動，aKnock 驅動受擊壓扁，flash 0.1s 受擊紅閃
+// - 死亡: spawnDeathBurst 拋出 6 顆八面體碎片，重力下墜 + 撞地反彈，~0.4s 收尾
+//
+// 新增怪物 checklist：
+// [ ] 在 src/<name>.js 用 MeshStandardMaterial + injectFx
+// [ ] 依角色屬性挑色彩語言中的對應色
+// [ ] this.deathFragColor + this.deathFragScale 兩個欄位
+// [ ] （選配）加 spawnT + _SPAWN_DUR + spawnBurst 重置 + update 遞減 + syncInstances 套 scale
+// [ ] xpReward 從 CONFIG 讀
+// ============================================================================
 
 import * as THREE from 'three';
 

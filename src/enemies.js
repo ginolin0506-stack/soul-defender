@@ -3,18 +3,65 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { CONFIG } from './config.js';
 import { injectFx } from './glitch.js';
 
-/** W9: Leech 複合幾何 — 主體 Box + 雙甲殼 + 頭錐，merge 成單一 BufferGeometry */
+/**
+ * 2026-05-23 Leech「Corrupted Crawler」精緻化
+ * 結構：頭顱 (icosahedron) + 雙鉗顎 + 單眼 + 胸甲 + 腹節 (3 段) + 尾刺 + 4 支腳
+ * 朝向：-Z 方向是「頭」，+Z 方向是「尾」
+ */
 function buildLeechGeo() {
-  const body = new THREE.BoxGeometry(0.5, 0.55, 1.0);
-  body.translate(0, 0.275, 0);
-  const shellL = new THREE.BoxGeometry(0.15, 0.35, 0.55);
-  shellL.translate(-0.28, 0.45, 0.05);
-  const shellR = new THREE.BoxGeometry(0.15, 0.35, 0.55);
-  shellR.translate(0.28, 0.45, 0.05);
-  const head = new THREE.ConeGeometry(0.18, 0.42, 4);
-  head.rotateX(-Math.PI / 2);
-  head.translate(0, 0.32, -0.6);
-  return mergeGeometries([body, shellL, shellR, head]);
+  const parts = [];
+  // 頭顱
+  const head = new THREE.IcosahedronGeometry(0.22, 0);
+  head.translate(0, 0.32, -0.55);
+  parts.push(head);
+  // 單眼（前方小錐）
+  const eye = new THREE.ConeGeometry(0.06, 0.12, 6);
+  eye.rotateX(-Math.PI / 2);
+  eye.translate(0, 0.34, -0.78);
+  parts.push(eye);
+  // 雙鉗顎（向前突出兩根刺）
+  for (const sx of [-0.12, 0.12]) {
+    const mandible = new THREE.ConeGeometry(0.045, 0.22, 4);
+    mandible.rotateX(-Math.PI / 2);
+    mandible.translate(sx, 0.26, -0.74);
+    parts.push(mandible);
+  }
+  // 胸甲（Box，肩部高）
+  const thorax = new THREE.BoxGeometry(0.46, 0.42, 0.38);
+  thorax.translate(0, 0.30, -0.20);
+  parts.push(thorax);
+  // 胸甲背刺（兩塊小盔）
+  for (const sx of [-0.25, 0.25]) {
+    const spine = new THREE.BoxGeometry(0.10, 0.22, 0.30);
+    spine.translate(sx, 0.48, -0.18);
+    parts.push(spine);
+  }
+  // 腹節 3 段（中、後、尾，逐漸縮小）
+  const seg1 = new THREE.BoxGeometry(0.42, 0.36, 0.30);
+  seg1.translate(0, 0.26, 0.14);
+  parts.push(seg1);
+  const seg2 = new THREE.BoxGeometry(0.34, 0.30, 0.28);
+  seg2.translate(0, 0.22, 0.42);
+  parts.push(seg2);
+  const seg3 = new THREE.BoxGeometry(0.24, 0.24, 0.22);
+  seg3.translate(0, 0.18, 0.66);
+  parts.push(seg3);
+  // 尾刺
+  const tailSpike = new THREE.ConeGeometry(0.06, 0.18, 4);
+  tailSpike.rotateX(Math.PI / 2);
+  tailSpike.translate(0, 0.18, 0.85);
+  parts.push(tailSpike);
+  // 4 支腳（左右各兩支，斜向下外伸）
+  for (const sx of [-0.26, 0.26]) {
+    for (const sz of [-0.08, 0.18]) {
+      const leg = new THREE.BoxGeometry(0.05, 0.20, 0.05);
+      leg.translate(sx, 0.10, sz);
+      parts.push(leg);
+    }
+  }
+  // mergeGeometries 要求所有 geo 的 index 屬性一致；Polyhedron 系（Icosahedron/Octahedron）無 index、
+  // 其餘 Box/Cone/Cylinder/Torus 有 index → 統一轉非索引化才能 merge
+  return mergeGeometries(parts.map(g => g.index ? g.toNonIndexed() : g));
 }
 
 /**
@@ -26,6 +73,9 @@ export class Swarm {
   constructor(scene, maxCount) {
     this.maxCount = maxCount;
     this.activeCount = 0;
+    // 2026-05-23 通用死亡碎片：leech 紅紫骨甲粉碎
+    this.deathFragColor = 0xff3344;
+    this.deathFragScale = 1.0;
 
     // W9 升級：複合幾何 leech（外骨骼甲殼感）
     const geo = buildLeechGeo();
@@ -79,6 +129,9 @@ export class Swarm {
     this.flashTime = new Float32Array(maxCount);
     this.dashHitTag = new Uint8Array(maxCount);
     this.slowTimer = new Float32Array(maxCount);   // 2026-05-22 Soul Vacuum 緩速倒數
+    // 2026-05-23：spawn-in 動畫倒數（生成時設 SPAWN_DUR，每幀遞減；scale = 1 - t）
+    this.spawnT = new Float32Array(maxCount);
+    this._SPAWN_DUR = 0.28;
     // P4 + P6: 追蹤前一幀狀態避免重複寫入 GPU buffer
     this._wasFlashing = new Uint8Array(maxCount);
     this._hidden = new Uint8Array(maxCount).fill(1);  // 構造時全部 scale-0
@@ -124,6 +177,7 @@ export class Swarm {
       this.flashTime[i] = 0;
       this.dashHitTag[i] = 0;
       this.slowTimer[i] = 0;
+      this.spawnT[i] = this._SPAWN_DUR;
       this.activeCount++;
       spawned++;
     }
@@ -193,6 +247,7 @@ export class Swarm {
       this.pos[i*3+2] = pz + vz * dt;
 
       if (this.flashTime[i] > 0) this.flashTime[i] -= dt;
+      if (this.spawnT[i] > 0) this.spawnT[i] = Math.max(0, this.spawnT[i] - dt);
     }
   }
 
@@ -226,6 +281,16 @@ export class Swarm {
       const speed = Math.hypot(vx, vz);
       const yaw = (vx*vx + vz*vz > 0.0001) ? Math.atan2(vx, vz) : 0;
       this._tmpQ.setFromAxisAngle(this._upVec, yaw);
+      // 2026-05-23 spawn-in 動畫：spawnT 從 SPAWN_DUR 倒數到 0，scale 從 0→overshoot→1
+      // 用 smoothstep + 輕微 overshoot 給「資料化身」浮現感
+      if (this.spawnT[i] > 0) {
+        const t = 1 - this.spawnT[i] / this._SPAWN_DUR;          // 0→1
+        const s = t * t * (3 - 2 * t);                             // smoothstep
+        const overshoot = s + Math.sin(t * Math.PI) * 0.15;         // 中段微凸
+        this._tmpScale.set(overshoot, overshoot, overshoot);
+      } else {
+        this._tmpScale.set(1, 1, 1);
+      }
       this._tmpM.compose(this._tmpV, this._tmpQ, this._tmpScale);
       this.mesh.setMatrixAt(i, this._tmpM);
 

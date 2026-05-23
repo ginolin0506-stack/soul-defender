@@ -8,33 +8,127 @@ export class Hero {
     this.velocity = new THREE.Vector3();
     this.facing = 0;
 
+    // === 2026-05-23 Hero「Crystal Guardian Construct」重建 ===
+    // 世界觀：玩家是水晶構念體 — 半 AI 半結晶守護單位，造型呼應中央水晶但更具機械感
+    // 結構（自下而上）：六角平台 → 腳光環 → 漸縮下身 → 胸口能量核 → 上身軀幹 →
+    //   雙肩盔 → 頭部感應器 → 前向能量矛 + 雙旋轉光環
     const group = new THREE.Group();
 
-    const bodyGeo = new THREE.CapsuleGeometry(0.5, 0.7, 6, 12);
+    // 共用材質：主體深色金屬青藍 + 高亮細節
     const bodyMat = new THREE.MeshStandardMaterial({
-      color: 0x00d9ff,
+      color: 0x1f5566,
       emissive: 0x004466,
-      emissiveIntensity: 0.7,
-      roughness: 0.35,
-      metalness: 0.3,
+      emissiveIntensity: 0.55,
+      roughness: 0.4,
+      metalness: 0.65,
+      flatShading: true,
     });
-    const body = new THREE.Mesh(bodyGeo, bodyMat);
-    body.castShadow = true;
-    group.add(body);
     this._bodyMat = bodyMat;
 
-    const tipGeo = new THREE.ConeGeometry(0.25, 0.5, 6);
-    const tipMat = new THREE.MeshStandardMaterial({
+    const glowMat = new THREE.MeshStandardMaterial({
       color: 0x66ffff,
-      emissive: 0x00aabb,
-      emissiveIntensity: 1.0,
+      emissive: 0x00ccee,
+      emissiveIntensity: 1.4,
+      roughness: 0.25,
+      metalness: 0.3,
+      flatShading: true,
     });
-    const tip = new THREE.Mesh(tipGeo, tipMat);
-    tip.position.set(0, 0, -0.7);
-    tip.rotation.x = Math.PI / 2;
-    group.add(tip);
 
-    const ringGeo = new THREE.RingGeometry(0.7, 0.95, 28);
+    const accentMat = new THREE.MeshStandardMaterial({
+      color: 0xaaeeff,
+      emissive: 0x0088aa,
+      emissiveIntensity: 0.9,
+      roughness: 0.3,
+      metalness: 0.55,
+      flatShading: true,
+    });
+
+    // (1) 六角底盤 — 構念體浮空的承載
+    const baseGeo = new THREE.CylinderGeometry(0.55, 0.68, 0.18, 6);
+    const base = new THREE.Mesh(baseGeo, bodyMat);
+    base.position.y = -0.78;
+    base.castShadow = true;
+    group.add(base);
+
+    // (2) 漸縮下身 — 八角錐台
+    const lowerGeo = new THREE.CylinderGeometry(0.32, 0.55, 0.55, 8);
+    const lower = new THREE.Mesh(lowerGeo, bodyMat);
+    lower.position.y = -0.4;
+    lower.castShadow = true;
+    group.add(lower);
+
+    // (3) 胸口能量核 — 小水晶八面體（呼應大水晶，是「攜帶資料」的視覺暗示）
+    const coreGeo = new THREE.OctahedronGeometry(0.22, 0);
+    const core = new THREE.Mesh(coreGeo, glowMat);
+    core.position.y = 0;
+    group.add(core);
+    this._chestCore = core;
+
+    // (4) 上身軀幹 — 倒置六角柱（肩寬腰窄）
+    const torsoGeo = new THREE.CylinderGeometry(0.42, 0.30, 0.55, 6);
+    const torso = new THREE.Mesh(torsoGeo, bodyMat);
+    torso.position.y = 0.28;
+    torso.castShadow = true;
+    group.add(torso);
+
+    // (5) 雙肩盔 — 對稱兩塊小盔甲
+    for (const sx of [-0.42, 0.42]) {
+      const paulGeo = new THREE.BoxGeometry(0.22, 0.18, 0.32);
+      const paul = new THREE.Mesh(paulGeo, accentMat);
+      paul.position.set(sx, 0.46, 0);
+      paul.castShadow = true;
+      group.add(paul);
+    }
+
+    // (6) 頸環 + 頭部感應器
+    const neckGeo = new THREE.CylinderGeometry(0.16, 0.18, 0.1, 6);
+    const neck = new THREE.Mesh(neckGeo, accentMat);
+    neck.position.y = 0.58;
+    group.add(neck);
+
+    const headGeo = new THREE.OctahedronGeometry(0.20, 0);
+    const head = new THREE.Mesh(headGeo, glowMat);
+    head.position.y = 0.80;
+    head.castShadow = true;
+    group.add(head);
+    this._headCore = head;
+
+    // (7) 前向能量矛 — 細桿 + 尖頭（取代原本的小三角）
+    const shaftGeo = new THREE.CylinderGeometry(0.04, 0.04, 0.7, 6);
+    const shaft = new THREE.Mesh(shaftGeo, accentMat);
+    shaft.position.set(0, 0.05, -0.6);
+    shaft.rotation.x = Math.PI / 2;
+    group.add(shaft);
+
+    const lanceTipGeo = new THREE.ConeGeometry(0.10, 0.30, 6);
+    const lanceTip = new THREE.Mesh(lanceTipGeo, glowMat);
+    lanceTip.position.set(0, 0.05, -1.05);
+    lanceTip.rotation.x = -Math.PI / 2;
+    group.add(lanceTip);
+
+    // (8) 雙旋轉光環 — 大外環順時針、小內環逆時針，給構念體 "tech aura" 感
+    const haloOuterGeo = new THREE.TorusGeometry(0.85, 0.025, 6, 36);
+    haloOuterGeo.rotateX(-Math.PI / 2);
+    const haloMat = new THREE.MeshBasicMaterial({
+      color: 0x66ffff,
+      transparent: true,
+      opacity: 0.7,
+    });
+    const haloOuter = new THREE.Mesh(haloOuterGeo, haloMat);
+    haloOuter.position.y = 0.15;
+    group.add(haloOuter);
+    this._haloOuter = haloOuter;
+
+    const haloInnerGeo = new THREE.TorusGeometry(0.55, 0.02, 6, 28);
+    haloInnerGeo.rotateX(-Math.PI / 2);
+    haloInnerGeo.rotateZ(Math.PI / 6);
+    const haloInner = new THREE.Mesh(haloInnerGeo, haloMat);
+    haloInner.position.y = 0.05;
+    group.add(haloInner);
+    this._haloInner = haloInner;
+
+    // (9) 腳光環（保留原本的呼吸節奏）
+    const ringGeo = new THREE.RingGeometry(0.7, 0.95, 32);
     ringGeo.rotateX(-Math.PI / 2);
     const ringMat = new THREE.MeshBasicMaterial({
       color: 0x66ffff,
@@ -117,6 +211,11 @@ export class Hero {
     this.dashJustEnded = false;
     this.dashJustTriggered = false;
 
+    // 2026-05-23：spawn-in（出場縮放）+ 走動傾斜（cosmetic lean）
+    this._spawnT = 0.6;     // 倒數到 0；scale 從 0 浮現
+    this._lean = 0;          // 移動傾斜插值
+    this._wobble = 0;        // 站立呼吸相位
+
     // === 英雄獨立血量（2026-05-21）===
     this.maxHp = CONFIG.heroMaxHp;
     this.hp = this.maxHp;
@@ -174,6 +273,30 @@ export class Hero {
     this.mesh.position.copy(this.position);
     this.mesh.rotation.y = this.facing;
 
+    // === 2026-05-23：spawn-in + 呼吸 + 走動傾斜 ===
+    if (this._spawnT > 0) {
+      this._spawnT = Math.max(0, this._spawnT - dt);
+      const t = 1 - this._spawnT / 0.6;                // 0→1
+      const s = t * t * (3 - 2 * t);                    // smoothstep
+      const overshoot = s + Math.sin(t * Math.PI) * 0.12;
+      this.mesh.scale.set(overshoot, overshoot, overshoot);
+    } else if (this.mesh.scale.x !== 1) {
+      this.mesh.scale.set(1, 1, 1);
+    }
+
+    // 呼吸：站立時 body 輕微 Y 縮放（dash / spawn 時不疊加避免抽搐）
+    this._wobble += dt;
+    const moving = this.velocity.lengthSq() > 0.5;
+    if (this._spawnT <= 0) {
+      const breathe = 1 + Math.sin(this._wobble * 3.2) * 0.025;
+      this.mesh.scale.y = breathe;
+    }
+
+    // 走動前傾：在 mesh.rotation.x 上插值（雷霆衝刺時更傾）
+    const targetLean = this.dashTimer > 0 ? -0.45 : (moving ? -0.18 : 0);
+    this._lean += (targetLean - this._lean) * Math.min(1, dt * 10);
+    this.mesh.rotation.x = this._lean;
+
     this.dashCooldown -= dt;
     if (input.wasPressed('Space') && this.dashCooldown <= 0 && this.dashTimer <= 0) {
       let dx = this._tmpMove.x, dz = this._tmpMove.z;
@@ -224,6 +347,20 @@ export class Hero {
     // 腳光環呼吸
     const breathe = 0.5 + Math.sin(performance.now() * 0.005) * 0.15;
     this._ring.material.opacity = breathe;
+
+    // 2026-05-23：雙旋轉光環 + 胸口/頭部能量核脈動
+    if (this._haloOuter) this._haloOuter.rotation.y += dt * 1.4;
+    if (this._haloInner) this._haloInner.rotation.y -= dt * 2.1;
+    const pulse = 1.0 + Math.sin(performance.now() * 0.008) * 0.12;
+    if (this._chestCore) {
+      this._chestCore.rotation.y += dt * 1.8;
+      this._chestCore.rotation.x += dt * 0.9;
+      this._chestCore.scale.setScalar(pulse);
+    }
+    if (this._headCore) {
+      this._headCore.rotation.y -= dt * 1.2;
+      this._headCore.rotation.z += dt * 0.6;
+    }
 
     // === 受傷無敵 / 鎖回血 / 受傷視覺衰減 ===
     if (this.damageIframeTimer > 0) this.damageIframeTimer = Math.max(0, this.damageIframeTimer - dt);

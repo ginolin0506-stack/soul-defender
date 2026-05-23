@@ -1,7 +1,49 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { CONFIG } from './config.js';
 import { SpatialHash } from './spatialHash.js';
 import { injectFx } from './glitch.js';
+
+/**
+ * 2026-05-23 Lancer「Energy Lance」精緻化
+ * 結構：尾翼後鰭 + 機身軀幹 + 中段能量環 + 槍尖長錐 + 側翼短鰭
+ * 朝向：-Z = 槍尖前方
+ */
+function buildLancerGeo() {
+  const parts = [];
+  // 機身軀幹（中央橢圓柱）
+  const body = new THREE.CylinderGeometry(0.18, 0.22, 0.55, 6);
+  body.rotateX(Math.PI / 2);
+  body.translate(0, 0.45, 0);
+  parts.push(body);
+  // 槍尖長錐（前段）
+  const tip = new THREE.ConeGeometry(0.18, 0.65, 6);
+  tip.rotateX(-Math.PI / 2);
+  tip.translate(0, 0.45, -0.55);
+  parts.push(tip);
+  // 中段能量環（torus）
+  const ring = new THREE.TorusGeometry(0.22, 0.04, 4, 16);
+  ring.rotateY(Math.PI / 2);
+  ring.translate(0, 0.45, 0);
+  parts.push(ring);
+  // 後段尾錐（短）
+  const tail = new THREE.ConeGeometry(0.22, 0.30, 5);
+  tail.rotateX(Math.PI / 2);
+  tail.translate(0, 0.45, 0.35);
+  parts.push(tail);
+  // 兩片側翼短鰭（薄片）
+  for (const sx of [-1, 1]) {
+    const fin = new THREE.BoxGeometry(0.25, 0.05, 0.25);
+    fin.translate(sx * 0.22, 0.45, 0.18);
+    parts.push(fin);
+  }
+  // 底部支架（小柱）
+  const stand = new THREE.CylinderGeometry(0.06, 0.10, 0.30, 4);
+  stand.translate(0, 0.20, 0);
+  parts.push(stand);
+  // 統一轉非索引避免 Polyhedron / 其餘 indexed 混合報錯（防未來新增 octahedron 等）
+  return mergeGeometries(parts.map(g => g.index ? g.toNonIndexed() : g));
+}
 
 /**
  * Lancer — 突刺兵 / 蓄力直線衝刺型（2026-05-22 新增）
@@ -17,11 +59,12 @@ export class Lancers {
     this.maxCount = maxCount;
     this.activeCount = 0;
     this.xpReward = CONFIG.lancerXp;
+    // 2026-05-23 死亡碎片：槍兵紅光槍尖崩散
+    this.deathFragColor = 0xff3344;
+    this.deathFragScale = 1.0;
 
-    // 錐形造型 — 槍尖朝前
-    const geo = new THREE.ConeGeometry(0.32, 1.1, 5);
-    geo.rotateX(Math.PI / 2);   // 改朝 +Z（face forward）
-    geo.translate(0, 0.55, 0);
+    // 2026-05-23：能量矛艦造型（軀幹 + 槍尖 + 能量環 + 尾錐 + 側翼）
+    const geo = buildLancerGeo();
     const mat = new THREE.MeshStandardMaterial({
       color: 0xffffff,
       emissive: 0xaa1133,

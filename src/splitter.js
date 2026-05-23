@@ -1,7 +1,43 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { CONFIG } from './config.js';
 import { SpatialHash } from './spatialHash.js';
 import { injectFx } from './glitch.js';
+
+/**
+ * 2026-05-23 Splitter「Volatile Mine」精緻化
+ * 結構：主體 icosahedron + 6 根尖刺（cardinal directions）+ 赤道警告環 + 頂部信標
+ */
+function buildSplitterGeo() {
+  const r = CONFIG.splitterRadius;
+  const parts = [];
+  // 主球
+  const core = new THREE.IcosahedronGeometry(r, 1);
+  parts.push(core);
+  // 6 根刺（±X、±Y、±Z 六個方向）
+  const spikeAxes = [
+    [+1, 0, 0], [-1, 0, 0],
+    [0, +1, 0], [0, -1, 0],
+    [0, 0, +1], [0, 0, -1],
+  ];
+  for (const [ax, ay, az] of spikeAxes) {
+    const spike = new THREE.ConeGeometry(r * 0.18, r * 0.7, 4);
+    // 預設錐尖朝 +Y，需要旋轉到目標方向
+    if (ax > 0)      spike.rotateZ(-Math.PI / 2);
+    else if (ax < 0) spike.rotateZ(Math.PI / 2);
+    else if (ay < 0) spike.rotateZ(Math.PI);
+    else if (az > 0) spike.rotateX(Math.PI / 2);
+    else if (az < 0) spike.rotateX(-Math.PI / 2);
+    spike.translate(ax * r * 1.15, ay * r * 1.15, az * r * 1.15);
+    parts.push(spike);
+  }
+  // 赤道警告環（小 torus）
+  const ring = new THREE.TorusGeometry(r * 1.05, r * 0.06, 4, 24);
+  ring.rotateX(Math.PI / 2);
+  parts.push(ring);
+  // 統一轉非索引避免 Polyhedron / 其餘 indexed 混合報錯
+  return mergeGeometries(parts.map(g => g.index ? g.toNonIndexed() : g));
+}
 
 /**
  * Splitter — 炸彈衝刺怪（2026-05-22 重做）
@@ -13,9 +49,12 @@ export class Splitters {
     this.maxCount = maxCount;
     this.activeCount = 0;
     this.xpReward = CONFIG.splitterXp;
+    // 2026-05-23 死亡碎片：橘紅 volatile → 高亮橘 emissive 碎裂
+    this.deathFragColor = 0xff5522;
+    this.deathFragScale = 1.3;
 
-    // 2026-05-22：改炸彈衝刺怪 — 多面體 + 強橘紅 emissive，視覺暗示「會爆」
-    const geo = new THREE.IcosahedronGeometry(CONFIG.splitterRadius, 1);
+    // 2026-05-23：地雷造型 — 主球 + 6 根尖刺 + 赤道警告環
+    const geo = buildSplitterGeo();
     const mat = new THREE.MeshStandardMaterial({
       color: 0xffffff,
       emissive: 0xff4422,
@@ -244,8 +283,23 @@ export class Mites {
     this.maxCount = maxCount;
     this.activeCount = 0;
     this.xpReward = CONFIG.mitesXp;
+    // 2026-05-23 死亡碎片：mites 小蟲粉色粉碎
+    this.deathFragColor = 0xff4488;
+    this.deathFragScale = 0.5;
 
-    const geo = new THREE.IcosahedronGeometry(CONFIG.mitesRadius, 0);
+    // 2026-05-23 Mites「Data Pixel」：小立方體 + 單眼 + 雙觸鬚（保持輕量，性能優先）
+    const mitesParts = [];
+    const mBody = new THREE.BoxGeometry(CONFIG.mitesRadius * 1.4, CONFIG.mitesRadius * 1.2, CONFIG.mitesRadius * 1.4);
+    mitesParts.push(mBody);
+    const mEye = new THREE.OctahedronGeometry(CONFIG.mitesRadius * 0.35, 0);
+    mEye.translate(0, CONFIG.mitesRadius * 0.6, -CONFIG.mitesRadius * 0.5);
+    mitesParts.push(mEye);
+    for (const sx of [-0.4, 0.4]) {
+      const antenna = new THREE.BoxGeometry(CONFIG.mitesRadius * 0.1, CONFIG.mitesRadius * 0.5, CONFIG.mitesRadius * 0.1);
+      antenna.translate(sx * CONFIG.mitesRadius, CONFIG.mitesRadius * 0.9, -CONFIG.mitesRadius * 0.3);
+      mitesParts.push(antenna);
+    }
+    const geo = mergeGeometries(mitesParts.map(g => g.index ? g.toNonIndexed() : g));
     const mat = new THREE.MeshStandardMaterial({
       color: 0xffffff,
       emissive: 0xff4488,

@@ -11,7 +11,10 @@ export const CONFIG = {
   crystalHp: 1000,
   crystalRadius: 1.2,
   crystalHitRange: 1.8,
-  crystalHealPerSoul: 1,
+  // 2026-05-23 玩家要求：把「靈魂回水晶 → 補水晶血量」做成有感知的設定
+  // 舊值 1 在 1000 HP 水晶上 = 0.1%/kill，根本看不見；改 5 後 100 kill 補 500 HP（半條）
+  // 注意 Boss 給 25-80 souls，殺 boss 會大補一波（125-400 HP 補血）— 設計上的「擊殺獎勵」
+  crystalHealPerSoul: 5,
   bulletDamage: 18,
 
   // === 英雄 ===
@@ -28,12 +31,16 @@ export const CONFIG = {
   heroHealBlockOnBossTether: 3.0,   // boss 壓繫帶後鎖回血秒數
   heroBeamDamage: 18,               // boss 光束打中 hero 一次的傷害
   heroPulseInterval: 0.85,
-  heroPulseRadius: 4.0,            // base radius
+  // 2026-05-23 玩家反饋「開局還是難清」：放棄拉傷害 (69→37 revert)，改放大基礎範圍 ×1.5
+  // 4.0 → 6.0 ⇒ 命中面積 ×2.25，DPS 隨命中數放大；單體 TTK 不變（leech 仍 2 發、boss 仍 76 發）
+  // 設計傾向：脈衝是「清屏 AoE」不是「狙擊核武」
+  heroPulseRadius: 6.0,
   // 玩家反饋（2026-05-20 再次）：開局攻擊範圍太小 → 前 30 秒 ease-in bonus
   // 2026-05-22：玩家覺得初始衝擊波還是太小，從 0.12 拉回到 0.30（介於原始 0.25 與更激進之間）
   heroPulseEarlyRadiusBoost: 0.30,
   heroPulseEarlyRadiusDuration: 30,
-  heroPulseBaseDamage: 37,         // 2026-05-22：定錨 Leech HP × 2/3（55 × 0.667 ≈ 36.67 → 37），2 發殺 leech
+  // 2026-05-22：定錨 Leech HP × 2/3 (55 × 0.667 ≈ 37)，2 發殺 leech
+  heroPulseBaseDamage: 37,
   heroPulseCritChance: 0.18,
   heroPulseCritMult: 2.2,
   heroDashDistance: 6.5,
@@ -167,8 +174,10 @@ export const CONFIG = {
   conduitHp: 75,
   conduitRadius: 0.55,
   conduitXp: 18,
-  conduitBuffSpeedMult: 1.25,   // 活著時其他怪的速度倍率
-  conduitAuraRadius: 6,          // 視覺光環（不影響邏輯，目前 buff 是全圖）
+  conduitBuffSpeedMult: 1.25,   // 活著時其他怪的速度倍率（全圖效果，不限距離）
+  // 2026-05-23：6 → 1.0。原本 r=6 大環會誤導玩家以為「buff 只在環內」，
+  // 實際上 buff 是全圖。改成貼身小光環當「活著指示」，不再假裝有距離概念
+  conduitAuraRadius: 1.0,
   conduitStartTime: 75,
   conduitSpawnInterval: 14,
   conduitTargetMax: 3,
@@ -347,11 +356,19 @@ export const CONFIG = {
   bulletRadius: 0.18,
 
   // === 生怪節奏 ===
+  // 2026-05-23 玩家要求「場上各類小怪總量要有限制」：全域硬上限
+  // 過去只有各類型自己的 sub-cap（leech 1100 + 各類 sub-cap 70 ≈ 1170）+ 無盡 ×2.2 → 可達 2500+
+  // 改為全域 500（一般）/ 1000（無盡），達到上限直接停止所有 spawn 直到死人填回空缺
+  // 玩家視覺/操作壓力封頂，仍保留死亡-生怪的脈動感
+  maxTotalEnemies: 500,
+  endlessMaxTotalEnemies: 1000,
   spawnInterval: 0.18,
   spawnBurstBase: 1,           // 2026-05-22 玩家反饋：開局還是太多 → 2 降到 1
   spawnBurstRamp: 0.02,
   spawnTargetBase: 6,          // 2026-05-22 玩家反饋：開局還是太多 → 12 降到 6（早期人口減半）
-  earlyRampDuration: 30,       // 前 30 秒 spawn ramp 用 quadratic ease-in，慢慢回到原本曲線
+  // 2026-05-23 玩家反饋「一開始太難清不掉怪」：ease-in 從 30s 拉到 60s
+  // 舊曲線 t=30s target=246（懸崖），新曲線 t=30s target≈66（軟著陸），t=60s 才回到舊 30s 的水準
+  earlyRampDuration: 60,
   spawnTargetRamp: 8,
   spawnTargetMax: 1100,
   spawnRingRadiusMin: 24,
@@ -382,8 +399,10 @@ export const CONFIG = {
   xpExponent: 1.18,
 
   // === 天賦 ===
-  // 靈光護甲 Aegis Charge（2026-05-22：6→10、+35→+20、5 層→3 層）
-  aegisSoulsPerShield: 10,
+  // 靈光護甲 Aegis Charge
+  // 2026-05-22 大砍：6 souls → 10 souls / +35 → +20 / 5 層 → 3 層（避免後期無腦堆疊）
+  // 2026-05-23 微調：首抽價值崩潰（vs Crystallize 立刻 +250 HP），10→8、3→4 略補一刀
+  aegisSoulsPerShield: 8,
   aegisShieldPerStack: 20,
 
   // === 2026-05-22 機制重寫 ===

@@ -1,7 +1,44 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { CONFIG } from './config.js';
 import { SpatialHash } from './spatialHash.js';
 import { injectFx } from './glitch.js';
+
+/**
+ * 2026-05-23 Wraith「Hooded Phantom」精緻化
+ * 結構：頭顱八面體 + 兜帽錐 + 雙下垂觸鬚 + 後方拖尾 + 漂浮符印
+ */
+function buildWraithGeo() {
+  const r = CONFIG.wraithRadius;
+  const parts = [];
+  // 頭顱核
+  const skull = new THREE.OctahedronGeometry(r * 0.85, 0);
+  skull.translate(0, 0, 0);
+  parts.push(skull);
+  // 兜帽錐（罩在頭頂）
+  const hood = new THREE.ConeGeometry(r * 1.05, r * 1.30, 6);
+  hood.translate(0, r * 0.75, 0);
+  parts.push(hood);
+  // 雙下垂觸鬚（從下方延伸出兩根尖錐）
+  for (const sx of [-0.4, 0.4]) {
+    const tendril = new THREE.ConeGeometry(r * 0.12, r * 0.85, 4);
+    tendril.rotateX(Math.PI);
+    tendril.translate(sx * r, -r * 0.55, 0);
+    parts.push(tendril);
+  }
+  // 後方拖尾（三條漸縮的薄片在背後）
+  for (let i = 0; i < 3; i++) {
+    const tail = new THREE.BoxGeometry(r * 0.28, r * 0.04, r * 0.6 + i * r * 0.2);
+    tail.translate(0, r * 0.1 - i * r * 0.15, r * 0.55 + i * r * 0.35);
+    parts.push(tail);
+  }
+  // 漂浮符印（頭頂上方一個小八面體）
+  const sigil = new THREE.OctahedronGeometry(r * 0.20, 0);
+  sigil.translate(0, r * 1.65, 0);
+  parts.push(sigil);
+  // 統一轉非索引避免 Polyhedron / 其餘 indexed 混合報錯
+  return mergeGeometries(parts.map(g => g.index ? g.toNonIndexed() : g));
+}
 
 /**
  * Wraith — 鬼影 / 短距 blink 騷擾型（2026-05-22 新增）
@@ -14,9 +51,12 @@ export class Wraiths {
     this.maxCount = maxCount;
     this.activeCount = 0;
     this.xpReward = CONFIG.wraithXp;
+    // 2026-05-23 死亡碎片：鬼影紫光散去
+    this.deathFragColor = 0xaa66ff;
+    this.deathFragScale = 0.9;
 
-    // 半透明菱形 — 鬼影感
-    const geo = new THREE.OctahedronGeometry(CONFIG.wraithRadius, 0);
+    // 2026-05-23：兜帽幽靈造型（頭顱 + 兜帽 + 觸鬚 + 拖尾 + 浮空符印）
+    const geo = buildWraithGeo();
     const mat = new THREE.MeshStandardMaterial({
       color: 0xffffff,
       emissive: 0x6622aa,

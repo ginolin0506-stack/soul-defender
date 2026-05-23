@@ -1,7 +1,46 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { CONFIG } from './config.js';
 import { SpatialHash } from './spatialHash.js';
 import { injectFx } from './glitch.js';
+
+/**
+ * 2026-05-23 Mire「Corrupted Sludge」精緻化
+ * 結構：主乾癟身體（球） + 3 個側邊腫塊 + 下垂底錐 + 頂部不規則突起
+ */
+function buildMireGeo() {
+  const r = CONFIG.mireRadius;
+  const parts = [];
+  // 主身體（八面體 detail 1）
+  const body = new THREE.IcosahedronGeometry(r * 0.95, 1);
+  body.translate(0, r * 0.1, 0);
+  parts.push(body);
+  // 側邊腫塊（3 個小球，非對稱位置給「腫塊」感）
+  const bumpOffsets = [
+    [r * 0.65, r * 0.0, r * 0.20],
+    [-r * 0.55, r * 0.15, -r * 0.30],
+    [r * 0.15, r * 0.10, -r * 0.65],
+  ];
+  for (const [bx, by, bz] of bumpOffsets) {
+    const bump = new THREE.IcosahedronGeometry(r * 0.35, 0);
+    bump.translate(bx, by, bz);
+    parts.push(bump);
+  }
+  // 下垂底錐（淤泥滴落感）
+  const drip = new THREE.ConeGeometry(r * 0.40, r * 0.55, 5);
+  drip.rotateX(Math.PI);
+  drip.translate(0, -r * 0.50, 0);
+  parts.push(drip);
+  // 頂部不規則突起（兩塊小盒）
+  const top1 = new THREE.BoxGeometry(r * 0.30, r * 0.40, r * 0.30);
+  top1.translate(r * 0.30, r * 0.65, 0);
+  parts.push(top1);
+  const top2 = new THREE.BoxGeometry(r * 0.22, r * 0.30, r * 0.22);
+  top2.translate(-r * 0.20, r * 0.80, r * 0.10);
+  parts.push(top2);
+  // 統一轉非索引避免 Polyhedron / 其餘 indexed 混合報錯
+  return mergeGeometries(parts.map(g => g.index ? g.toNonIndexed() : g));
+}
 
 /**
  * Mire — 沼 / 走路掉落減速地形（2026-05-22 新增）
@@ -14,9 +53,12 @@ export class Mires {
     this.activeCount = 0;
     this.xpReward = CONFIG.mireXp;
     this.patches = patches;   // 共用 MirePatchPool，由 game.js 注入
+    // 2026-05-23 死亡碎片：沼澤怪暗綠淤泥噴濺
+    this.deathFragColor = 0x44aa55;
+    this.deathFragScale = 1.2;
 
-    // 不規則菱形 — 沼澤質感
-    const geo = new THREE.IcosahedronGeometry(CONFIG.mireRadius, 1);
+    // 2026-05-23：腫塊淤泥造型（主身 + 3 個側腫 + 下垂底錐 + 頂部突起）
+    const geo = buildMireGeo();
     const mat = new THREE.MeshStandardMaterial({
       color: 0xffffff,
       emissive: 0x224422,
