@@ -42,13 +42,23 @@ export class Hero {
       flatShading: true,
     });
 
-    // jointMat：關節 / 觸鬚桿 / 腿節 — 中等亮度的青色金屬
+    // jointMat：關節 / 觸鬚桿 / 腿節 — 中等亮度（給觸鬚 / 顎刺用）
     const jointMat = new THREE.MeshStandardMaterial({
       color: 0x336688,
       emissive: 0x0088aa,
       emissiveIntensity: 0.9,
       roughness: 0.3,
       metalness: 0.6,
+      flatShading: true,
+    });
+
+    // legMat：腿節專用 — 更亮、更冷青，俯視角才看得到（之前腿太暗被身體吃掉）
+    const legMat = new THREE.MeshStandardMaterial({
+      color: 0x66ccff,
+      emissive: 0x44bbee,
+      emissiveIntensity: 1.8,
+      roughness: 0.25,
+      metalness: 0.5,
       flatShading: true,
     });
 
@@ -59,33 +69,54 @@ export class Hero {
       opacity: 0.85,
     });
 
-    // helper：給 mesh 套線框 overlay（讓子線框繼承父 mesh transform）
+    // helper：給 mesh 套線框 overlay
     const addWire = (mesh, threshold = 8) => {
       const edges = new THREE.EdgesGeometry(mesh.geometry, threshold);
       const wire = new THREE.LineSegments(edges, wireMat);
       mesh.add(wire);
     };
 
-    // === 頭部 — 三角面顱（icosahedron）+ 雙眼 + 雙觸鬚 + 雙顎刺 ===
-    const head = new THREE.Mesh(new THREE.IcosahedronGeometry(0.34, 1), bodyMat);
-    head.position.set(0, 0.45, -0.55);
+    // helper：在兩個 3D 點之間放置一個圓柱（自動算長度 + 方向四元數）
+    const _vUp = new THREE.Vector3(0, 1, 0);
+    const _vDir = new THREE.Vector3();
+    const cylBetween = (p1, p2, r1, r2, mat) => {
+      _vDir.set(p2.x - p1.x, p2.y - p1.y, p2.z - p1.z);
+      const len = _vDir.length();
+      _vDir.divideScalar(len);
+      const geo = new THREE.CylinderGeometry(r1, r2, len, 5);
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.position.set((p1.x + p2.x) / 2, (p1.y + p2.y) / 2, (p1.z + p2.z) / 2);
+      mesh.quaternion.setFromUnitVectors(_vUp, _vDir);
+      mesh.castShadow = true;
+      return mesh;
+    };
+
+    // === 身體 — 壓縮成緊湊 3 節，總長 -Z 到 +Z ≈ 0.7（原 0.97）===
+    // BODY_Y 從 0.58 下調到 -0.30，讓腿能往下伸到地面（腳光環 y=-0.85）附近
+    // 原本 hero.position.y = 0.9，BODY_Y=0.58 時身體浮在世界 y=1.48，腳是浮空的
+    // 改 -0.30 後身體在世界 y=0.60、腳在世界 y=0.10 — 正好觸地
+    const BODY_Y = -0.30;
+
+    // 頭部 — 略小 icosahedron + 雙眼 + 雙觸鬚 + 雙顎刺
+    const head = new THREE.Mesh(new THREE.IcosahedronGeometry(0.30, 1), bodyMat);
+    head.position.set(0, BODY_Y, -0.32);
     head.castShadow = true;
     group.add(head);
     addWire(head);
     this._head = head;
 
     // 雙眼 — 大型八面體鏡片，前方突出
-    for (const sx of [-0.13, +0.13]) {
-      const eye = new THREE.Mesh(new THREE.OctahedronGeometry(0.10, 0), glowMat);
-      eye.position.set(sx, 0.50, -0.77);
+    for (const sx of [-0.12, +0.12]) {
+      const eye = new THREE.Mesh(new THREE.OctahedronGeometry(0.11, 0), glowMat);
+      eye.position.set(sx, BODY_Y + 0.02, -0.50);
       group.add(eye);
       if (sx < 0) this._eyeL = eye; else this._eyeR = eye;
     }
 
-    // 雙觸鬚 — 從頭頂前向上後散開，桿 + 末端光球
-    for (const sx of [-0.11, +0.11]) {
+    // 雙觸鬚 — 從頭頂前向上後散開
+    for (const sx of [-0.10, +0.10]) {
       const antennaPivot = new THREE.Object3D();
-      antennaPivot.position.set(sx, 0.62, -0.62);
+      antennaPivot.position.set(sx, BODY_Y + 0.18, -0.38);
       antennaPivot.rotation.x = -0.55;
       antennaPivot.rotation.z = sx > 0 ? -0.20 : 0.20;
       group.add(antennaPivot);
@@ -94,7 +125,6 @@ export class Hero {
       shaft.position.y = 0.275;
       antennaPivot.add(shaft);
 
-      // 半途的小節（增加機械感）
       const mid = new THREE.Mesh(new THREE.OctahedronGeometry(0.035, 0), jointMat);
       mid.position.y = 0.30;
       antennaPivot.add(mid);
@@ -106,10 +136,10 @@ export class Hero {
       if (sx < 0) this._antennaL = antennaPivot; else this._antennaR = antennaPivot;
     }
 
-    // 雙顎刺 — 兩側往外突的小錐（參考圖頰邊那兩根小探針）
+    // 雙顎刺
     for (const sx of [-1, 1]) {
       const probePivot = new THREE.Object3D();
-      probePivot.position.set(sx * 0.27, 0.42, -0.62);
+      probePivot.position.set(sx * 0.24, BODY_Y - 0.04, -0.40);
       probePivot.rotation.z = sx > 0 ? -Math.PI / 2.3 : Math.PI / 2.3;
       probePivot.rotation.x = -0.25;
       group.add(probePivot);
@@ -123,108 +153,103 @@ export class Hero {
       probePivot.add(probeTip);
     }
 
-    // === 胸節 — 主軀幹 ===
-    const thorax = new THREE.Mesh(new THREE.IcosahedronGeometry(0.40, 1), bodyMat);
-    thorax.position.set(0, 0.55, -0.05);
+    // 胸節 — 主軀幹（中央，最高最亮）
+    const thorax = new THREE.Mesh(new THREE.IcosahedronGeometry(0.36, 1), bodyMat);
+    thorax.position.set(0, BODY_Y + 0.05, 0);
     thorax.castShadow = true;
     group.add(thorax);
     addWire(thorax);
 
-    // 胸節兩側突起 — 機械腔感
-    for (const sx of [-1, 1]) {
-      const bump = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.12, 0.22), jointMat);
-      bump.position.set(sx * 0.34, 0.55, -0.05);
-      group.add(bump);
-      addWire(bump);
-    }
-
-    // 中央光脈 — 從頭到腹的能量帶
-    const spine = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.06, 0.65), glowMat);
-    spine.position.set(0, 0.76, -0.05);
+    // 胸節中央光脈
+    const spine = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.08, 0.55), glowMat);
+    spine.position.set(0, BODY_Y + 0.20, -0.05);
     spine.scale.y = 0.5;
     group.add(spine);
 
-    // === 腹節 — 後段較大球體 + 分節環 ===
-    const abdomen = new THREE.Mesh(new THREE.IcosahedronGeometry(0.42, 1), bodyMat);
-    abdomen.position.set(0, 0.48, 0.42);
+    // 腹節 — 後段稍大（ant-queen 感）
+    const abdomen = new THREE.Mesh(new THREE.IcosahedronGeometry(0.40, 1), bodyMat);
+    abdomen.position.set(0, BODY_Y, 0.30);
     abdomen.castShadow = true;
     group.add(abdomen);
     addWire(abdomen);
 
-    // 兩道分節環
-    for (let i = 0; i < 2; i++) {
-      const ringSeg = new THREE.Mesh(new THREE.TorusGeometry(0.32, 0.022, 4, 16), jointMat);
-      ringSeg.position.set(0, 0.48, 0.20 + i * 0.30);
-      ringSeg.rotation.y = Math.PI / 2;
-      ringSeg.rotation.z = Math.PI / 2;
-      group.add(ringSeg);
-    }
+    // 一道分節環
+    const ringSeg = new THREE.Mesh(new THREE.TorusGeometry(0.30, 0.022, 4, 16), jointMat);
+    ringSeg.position.set(0, BODY_Y, 0.18);
+    ringSeg.rotation.y = Math.PI / 2;
+    ringSeg.rotation.z = Math.PI / 2;
+    group.add(ringSeg);
 
-    // === 尾針 — 從腹部後上翹 ===
+    // 尾針 — 從腹部後上翹
     const tailPivot = new THREE.Object3D();
-    tailPivot.position.set(0, 0.62, 0.60);
-    tailPivot.rotation.x = -0.45;       // 朝後上方
+    tailPivot.position.set(0, BODY_Y + 0.16, 0.48);
+    tailPivot.rotation.x = -0.45;
     group.add(tailPivot);
 
-    const tailShaft = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.038, 0.50, 5), jointMat);
-    tailShaft.position.y = 0.25;
+    const tailShaft = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.038, 0.45, 5), jointMat);
+    tailShaft.position.y = 0.225;
     tailPivot.add(tailShaft);
 
     const tailTip = new THREE.Mesh(new THREE.ConeGeometry(0.055, 0.18, 5), glowMat);
-    tailTip.position.y = 0.59;
+    tailTip.position.y = 0.54;
     tailPivot.add(tailTip);
 
     this._tail = tailPivot;
 
-    // === 4 條多關節腿 ===
-    // 規格：[sx 肩 x, sz 肩 z, splay 外張弧度, fb 前後傾, phase 走路相位]
+    // === 4 條腿 — 用 cylBetween 顯式定位 3D 點，腿明顯外擴 + 膝關節明顯 ===
+    // 設計：每條腿是「肩→（外+略下）膝→（更外+地面）腳」的兩段折線
+    // 肩在身體側邊 (sx≈±0.30)、膝外擴到 ±0.58（明顯超出身體輪廓）、腳落地到 ±0.74
+    // 從上往下看：身體不會擋住腿 — 4 個爪子在 4 個角落
+    // 腿外擴極大 — 俯視角主要可見元素；腳位幾乎跟身體一樣寬度才能在縮放後仍看得到
     this._legs = [];
     const legSpecs = [
-      [-0.32, -0.22, +0.85, -0.30, 0.00],   // 前左
-      [+0.32, -0.22, -0.85, -0.30, 0.50],   // 前右
-      [-0.34, +0.28, +0.75, +0.40, 0.50],   // 後左
-      [+0.34, +0.28, -0.75, +0.40, 0.00],   // 後右
+      // [shoulderX, shoulderZ, kneeX, kneeZ, footX, footZ, phaseOffset]
+      [-0.30, -0.14, -0.72, -0.28, -1.00, -0.42, 0.00],   // 前左
+      [+0.30, -0.14, +0.72, -0.28, +1.00, -0.42, 0.50],   // 前右
+      [-0.30, +0.22, -0.72, +0.42, -1.00, +0.55, 0.50],   // 後左
+      [+0.30, +0.22, +0.72, +0.42, +1.00, +0.55, 0.00],   // 後右
     ];
+    const SHOULDER_Y = BODY_Y - 0.10;     // 肩略低於身體中心 = -0.40 local
+    const KNEE_Y = SHOULDER_Y - 0.22;      // 膝在肩下方明顯偏外
+    const FOOT_Y = -0.80;                  // 爪觸地（腳光環 -0.85 略上）
 
-    for (const [sx, sz, splay, fb, phase] of legSpecs) {
-      // 肩關節 pivot — 走路時整條腿擺動的中心
-      const shoulder = new THREE.Object3D();
-      shoulder.position.set(sx, 0.48, sz);
-      shoulder.rotation.z = splay;
-      shoulder.rotation.x = fb;
-      group.add(shoulder);
+    for (const [sx, sz, kx, kz, fx, fz, phase] of legSpecs) {
+      // 整條腿掛在 legPivot 上 — 走路時旋轉這個 pivot 整條腿一起擺
+      const legPivot = new THREE.Object3D();
+      legPivot.position.set(sx, SHOULDER_Y, sz);
+      group.add(legPivot);
 
-      // 肩關節球
-      const shoulderBall = new THREE.Mesh(new THREE.OctahedronGeometry(0.07, 0), jointMat);
-      shoulder.add(shoulderBall);
+      // 計算 knee / foot 在 pivot 局部座標
+      const shoulderL = new THREE.Vector3(0, 0, 0);
+      const kneeL = new THREE.Vector3(kx - sx, KNEE_Y - SHOULDER_Y, kz - sz);
+      const footL = new THREE.Vector3(fx - sx, FOOT_Y - SHOULDER_Y, fz - sz);
 
-      // 上腿節
-      const upper = new THREE.Mesh(new THREE.CylinderGeometry(0.040, 0.050, 0.32, 5), jointMat);
-      upper.position.y = -0.16;
-      shoulder.add(upper);
+      // 肩關節球（用亮的 legMat，俯視才能看到）
+      const sBall = new THREE.Mesh(new THREE.OctahedronGeometry(0.085, 0), legMat);
+      sBall.position.copy(shoulderL);
+      legPivot.add(sBall);
 
-      // 膝關節 pivot — 走路時下腿屈伸的軸
-      const knee = new THREE.Object3D();
-      knee.position.y = -0.32;
-      knee.rotation.x = -1.10;            // 初始彎曲（下腿往內勾向地面）
-      shoulder.add(knee);
+      // 上腿節：肩 → 膝（粗一倍，亮 legMat）
+      const upper = cylBetween(shoulderL, kneeL, 0.055, 0.070, legMat);
+      legPivot.add(upper);
 
-      // 膝關節球（亮）
-      const kneeBall = new THREE.Mesh(new THREE.OctahedronGeometry(0.05, 0), glowMat);
-      knee.add(kneeBall);
+      // 膝關節球（最亮 glowMat — 4 顆膝球是身體周圍 4 個發光端點）
+      const kBall = new THREE.Mesh(new THREE.OctahedronGeometry(0.080, 0), glowMat);
+      kBall.position.copy(kneeL);
+      legPivot.add(kBall);
 
-      // 下腿節
-      const lower = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.040, 0.36, 5), jointMat);
-      lower.position.y = -0.18;
-      knee.add(lower);
+      // 下腿節：膝 → 爪
+      const lower = cylBetween(kneeL, footL, 0.040, 0.055, legMat);
+      legPivot.add(lower);
 
-      // 爪尖（小錐）
-      const claw = new THREE.Mesh(new THREE.ConeGeometry(0.03, 0.12, 4), jointMat);
-      claw.position.y = -0.40;
+      // 爪尖（亮 glowMat — 4 個發光爪是俯視角的明顯外緣）
+      const claw = new THREE.Mesh(new THREE.ConeGeometry(0.055, 0.12, 4), glowMat);
+      claw.position.copy(footL);
+      claw.position.y -= 0.06;
       claw.rotation.x = Math.PI;
-      knee.add(claw);
+      legPivot.add(claw);
 
-      this._legs.push({ shoulder, knee, phase, baseRotX: fb, baseKneeX: -1.10 });
+      this._legs.push({ pivot: legPivot, phase, baseY: SHOULDER_Y, baseSZ: sz });
     }
 
     // === 腳光環（保留 — 地面位置提示） ===
@@ -470,17 +495,19 @@ export class Hero {
       this._tail.rotation.x = -0.45 + Math.sin(now * 0.005) * 0.05;
     }
 
-    // (d) 四腿走路循環 — 對角步態（前左+後右 / 前右+後左）
+    // (d) 四腿走路循環 — legPivot 是肩關節處，整條腿繞它旋轉
+    // 對角步態（前左+後右 同相、前右+後左 同相反相）
     if (this._legs) {
-      const walkSpeed = Math.min(1.2, motionSpeed / CONFIG.heroSpeed);   // 動的越快循環越快
-      const walkPhase = now * 0.012 * (moving ? walkSpeed * 5 + 1.0 : 0.4);
+      const walkSpeed = Math.min(1.2, motionSpeed / CONFIG.heroSpeed);
+      const walkPhase = now * 0.013 * (moving ? walkSpeed * 4 + 1.5 : 0.4);
       for (const leg of this._legs) {
         const t = walkPhase + leg.phase * Math.PI * 2;
-        const lift = moving ? Math.max(0, Math.sin(t)) * walkSpeed : 0;
-        // 肩擺動：前後揮（X 軸）+ 微微外張擺動（Z 軸保留 splay）
-        leg.shoulder.rotation.x = leg.baseRotX + Math.sin(t) * 0.30 * (moving ? walkSpeed : 0.15);
-        // 膝彎曲：lift 高時更直、low 時更彎
-        leg.knee.rotation.x = leg.baseKneeX + lift * 0.55;
+        // 整條腿前後擺（X 軸），振幅依移動速度
+        const swingAmp = moving ? 0.22 * walkSpeed : 0.04;
+        leg.pivot.rotation.x = Math.sin(t) * swingAmp;
+        // 抬腳：當 sin > 0 時把腳尖抬起（pivot 向外側仰）— 給「踩步」感
+        const lift = moving ? Math.max(0, Math.sin(t)) * 0.12 * walkSpeed : 0;
+        leg.pivot.position.y = leg.baseY + lift;
       }
     }
 
