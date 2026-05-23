@@ -97,26 +97,44 @@ export class Hero {
     // 改 -0.30 後身體在世界 y=0.60、腳在世界 y=0.10 — 正好觸地
     const BODY_Y = -0.30;
 
-    // 頭部 — 略小 icosahedron + 雙眼 + 雙觸鬚 + 雙顎刺
-    const head = new THREE.Mesh(new THREE.IcosahedronGeometry(0.30, 1), bodyMat);
+    // === 頭部 — 縮小（半徑 0.30 → 0.22，比胸節 0.36 明顯小一圈）===
+    // 主腦殼：小 icosahedron
+    const head = new THREE.Mesh(new THREE.IcosahedronGeometry(0.22, 1), bodyMat);
     head.position.set(0, BODY_Y, -0.32);
     head.castShadow = true;
     group.add(head);
     addWire(head);
     this._head = head;
 
-    // 雙眼 — 大型八面體鏡片，前方突出
-    for (const sx of [-0.12, +0.12]) {
-      const eye = new THREE.Mesh(new THREE.OctahedronGeometry(0.11, 0), glowMat);
-      eye.position.set(sx, BODY_Y + 0.02, -0.50);
+    // 前方尖喙 — 圓錐指向 -Z（前方），給「螞蟻吻部」感
+    // 圓錐預設指 +Y，rotation.x = -π/2 將 +Y 轉到 -Z 方向
+    const snoutLen = 0.26;
+    const snout = new THREE.Mesh(new THREE.ConeGeometry(0.15, snoutLen, 6), bodyMat);
+    snout.rotation.x = -Math.PI / 2;
+    // 喙底貼在頭顱前緣 z = head.z - head.r = -0.32 - 0.22 = -0.54
+    // 喙中心位於底再往前 snoutLen/2 = z = -0.54 - 0.13 = -0.67
+    snout.position.set(0, BODY_Y - 0.02, -0.67);
+    snout.castShadow = true;
+    group.add(snout);
+    addWire(snout);
+
+    // 喙尖小發光點（強化「尖端」視覺）
+    const snoutTip = new THREE.Mesh(new THREE.OctahedronGeometry(0.04, 0), glowMat);
+    snoutTip.position.set(0, BODY_Y - 0.02, -0.82);
+    group.add(snoutTip);
+
+    // 雙眼 — 縮小後頭顱對應位置：x 內收到 ±0.09、z 推到 -0.45（在頭顱前緣）
+    for (const sx of [-0.09, +0.09]) {
+      const eye = new THREE.Mesh(new THREE.OctahedronGeometry(0.085, 0), glowMat);
+      eye.position.set(sx, BODY_Y + 0.04, -0.46);
       group.add(eye);
       if (sx < 0) this._eyeL = eye; else this._eyeR = eye;
     }
 
-    // 雙觸鬚 — 從頭頂前向上後散開
-    for (const sx of [-0.10, +0.10]) {
+    // 雙觸鬚 — 從頭頂前向上後散開（attach 點對應新頭顱）
+    for (const sx of [-0.08, +0.08]) {
       const antennaPivot = new THREE.Object3D();
-      antennaPivot.position.set(sx, BODY_Y + 0.18, -0.38);
+      antennaPivot.position.set(sx, BODY_Y + 0.15, -0.40);
       antennaPivot.rotation.x = -0.55;
       antennaPivot.rotation.z = sx > 0 ? -0.20 : 0.20;
       group.add(antennaPivot);
@@ -136,20 +154,20 @@ export class Hero {
       if (sx < 0) this._antennaL = antennaPivot; else this._antennaR = antennaPivot;
     }
 
-    // 雙顎刺
+    // 雙顎刺 — 縮小後 x 內收到 ±0.16（原 0.24），緊貼小頭顱兩側
     for (const sx of [-1, 1]) {
       const probePivot = new THREE.Object3D();
-      probePivot.position.set(sx * 0.24, BODY_Y - 0.04, -0.40);
+      probePivot.position.set(sx * 0.16, BODY_Y - 0.04, -0.40);
       probePivot.rotation.z = sx > 0 ? -Math.PI / 2.3 : Math.PI / 2.3;
       probePivot.rotation.x = -0.25;
       group.add(probePivot);
 
-      const probe = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.028, 0.18, 4), jointMat);
-      probe.position.y = 0.09;
+      const probe = new THREE.Mesh(new THREE.CylinderGeometry(0.020, 0.025, 0.15, 4), jointMat);
+      probe.position.y = 0.075;
       probePivot.add(probe);
 
-      const probeTip = new THREE.Mesh(new THREE.OctahedronGeometry(0.04, 0), glowMat);
-      probeTip.position.y = 0.20;
+      const probeTip = new THREE.Mesh(new THREE.OctahedronGeometry(0.035, 0), glowMat);
+      probeTip.position.y = 0.17;
       probePivot.add(probeTip);
     }
 
