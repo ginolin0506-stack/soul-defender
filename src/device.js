@@ -52,15 +52,12 @@ const MOBILE_PROFILE = {
     toneMappingExposure: 1.05,
   },
   input: {
-    mode: 'touch',
-    deadZone: 0.45,                                // 世界單位：pointer 距 hero 小於此 → 不移動
-    tapMaxDuration: 0.22,                          // 秒：tap 比桌面 click 稍寬鬆（手指反應慢）
-    tapMaxMovePx: 18,                              // 像素：tap 容許小幅位移
-    touchYOffsetPx: 80,                            // 觸點向上偏移：避免手指遮住英雄
+    mode: 'touch',                                 // 手機：左半虛擬搖桿 + 右半 tap dash
+    deadZone: 0.45,                                // （桌面 mouse-follow 才會用到，留著沒影響）
   },
   hud: {
-    helpHtml: '👆 按住螢幕 = 自動移動　👆 短點 = 衝刺<br><span>輕點卡片選天賦</span>',
-    tutorialStart: '手指按住螢幕 → 英雄會朝該位置移動；短點 → 衝刺。撞到怪會扣自己血量（繫帶連著時慢回血）；水晶或英雄任一血量歸零都算結束。',
+    helpHtml: '👆 左半螢幕拖移 = 搖桿移動　👆 右半螢幕點擊 = 衝刺<br><span>輕點卡片選天賦</span>',
+    tutorialStart: '左半螢幕拖移控制方向（虛擬搖桿），右半螢幕點擊衝刺。撞到怪會扣自己血量（繫帶連著時慢回血）；水晶或英雄任一血量歸零都算結束。',
   },
 };
 
@@ -73,11 +70,8 @@ const DESKTOP_PROFILE = {
     toneMappingExposure: 1.05,
   },
   input: {
-    mode: 'mouse',
+    mode: 'mouse',                                 // 桌面：mouse-follow + left-click dash
     deadZone: 0.45,
-    tapMaxDuration: 0.20,
-    tapMaxMovePx: 14,
-    touchYOffsetPx: 0,                             // 桌面有外接觸控時，不需要偏移（指標精準）
   },
   hud: {
     helpHtml: '🖱️ 鼠標位置 = 自動移動　🖱️ 左鍵 = 衝刺<br><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> 升級選天賦',

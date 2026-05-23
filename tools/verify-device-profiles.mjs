@@ -61,7 +61,8 @@ async function probe(deviceParam, emulateMobile) {
     })(),
     helpHtml: document.getElementById('help')?.innerHTML?.slice(0, 200),
     inputDeadZone: window.__game?.input?._deadZone,
-    inputTouchOffset: window.__game?.input?._touchYOffsetPx,
+    inputMode: window.__game?.input?._mode,
+    joyInitial: window.__game?.input?._joyTouchId,
   }));
   const deviceLog = logs.find(l => l.startsWith('[device]'));
   await page.close();
@@ -79,7 +80,7 @@ try {
   report('Desktop: sun castShadow', dt.state.sunCastShadow === true);
   report('Desktop: pixelRatio ≤ 2', dt.state.pixelRatio <= 2);
   report('Desktop: help mentions 鼠標', /鼠標|🖱/.test(dt.state.helpHtml));
-  report('Desktop: touchYOffset = 0', dt.state.inputTouchOffset === 0);
+  report('Desktop: input mode = mouse', dt.state.inputMode === 'mouse');
   report('Desktop: no JS errors', dt.errs.filter(e => !e.includes('404')).length === 0, dt.errs.join('|'));
 
   // === 手機路徑 ===
@@ -91,8 +92,9 @@ try {
   report('Mobile: shadows disabled', mb.state.shadowsEnabled === false);
   report('Mobile: sun castShadow = false', mb.state.sunCastShadow === false);
   report('Mobile: pixelRatio ≤ 1.5', mb.state.pixelRatio <= 1.5);
-  report('Mobile: help mentions 螢幕 / 短點', /螢幕|短點|👆/.test(mb.state.helpHtml));
-  report('Mobile: touchYOffset = 80', mb.state.inputTouchOffset === 80);
+  report('Mobile: help mentions 螢幕 / 搖桿', /螢幕|搖桿|👆/.test(mb.state.helpHtml));
+  report('Mobile: input mode = touch', mb.state.inputMode === 'touch');
+  report('Mobile: 搖桿初始未啟動 (_joyTouchId = -1)', mb.state.joyInitial === -1);
   report('Mobile: no JS errors', mb.errs.filter(e => !e.includes('404')).length === 0, mb.errs.join('|'));
 
   // === Summary ===

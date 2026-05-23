@@ -316,11 +316,12 @@ export class Game {
     // Bot 模式：先讓 AI 決定本幀的移動 / dash 訊號
     if (this._botInput) botThink(this, rawDtSec);
 
-    // 2026-05-23：新操控下手機玩家不會按鍵 → 也需要靠 pointerActive / dash 請求觸發音訊解鎖
+    // 2026-05-23：新操控下手機玩家不會按鍵 → 也需要靠 pointer / dash / 搖桿觸發音訊解鎖
     if (!this.audioStarted && (
       this.input.justPressed.size > 0 ||
       this.input.pointerActive ||
-      this.input._dashPending     // 內部欄位：左鍵 / tap 已暫存待 hero 消費
+      this.input._dashPending ||        // 桌面左鍵 / 手機右半 tap 已暫存
+      (this.input._joyTouchId !== undefined && this.input._joyTouchId !== -1)  // 手機搖桿啟動
     )) {
       this.audio.ensureInit();
       this.audio.resume();

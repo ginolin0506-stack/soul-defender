@@ -20,6 +20,31 @@
     }
     canvas#game { display: block; touch-action: none; }
 
+    /* === 2026-05-23 虛擬搖桿（手機模式）=== */
+    #joystick-base, #joystick-knob {
+      position: fixed;
+      left: 0; top: 0;
+      pointer-events: none;
+      border-radius: 50%;
+      opacity: 0;
+      transition: opacity 0.18s ease-out;
+      z-index: 900;
+      will-change: transform, opacity;
+    }
+    #joystick-base.active, #joystick-knob.active { opacity: 1; }
+    #joystick-base {
+      width: 120px; height: 120px;
+      background: radial-gradient(circle, rgba(110,233,255,0.20) 50%, rgba(110,233,255,0.05) 100%);
+      border: 2px solid rgba(110,233,255,0.55);
+      box-shadow: 0 0 18px rgba(110,233,255,0.30);
+    }
+    #joystick-knob {
+      width: 56px; height: 56px;
+      background: radial-gradient(circle, rgba(255,255,255,0.90) 0%, rgba(180,230,255,0.70) 100%);
+      border: 2px solid rgba(110,233,255,0.85);
+      box-shadow: 0 0 12px rgba(255,255,255,0.45);
+    }
+
     /* === 左上 HUD === */
     #hud {
       position: fixed;
@@ -1166,6 +1191,10 @@
 </head>
 <body>
   <canvas id="game"></canvas>
+
+  <!-- 2026-05-23 手機虛擬搖桿 — Input.js 控制 transform 與 .active 顯示 -->
+  <div id="joystick-base"></div>
+  <div id="joystick-knob"></div>
 
   <div id="hud">
     <div id="crystal-hp-row">

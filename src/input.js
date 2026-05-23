@@ -1,5 +1,4 @@
-// 2026-05-23 重構：純鼠標 / 觸控操控
-// 玩家朝 pointer 自動移動；左鍵 / 短 tap 觸發 dash。
+// 2026-05-23 重構 v2：桌面用 mouse-follow + click dash；手機用「左半虛擬搖桿 + 右半 tap dash」
 // WASD / Arrow / Space 移動已全部捨棄；只保留系統/UI 鍵：P / R / M / 1-3 / debug B V C J K L U N
 import * as THREE from 'three';
 
@@ -15,9 +14,9 @@ const GAME_KEYS = new Set([
 ]);
 
 // Default 閾值 — 若沒給 profile，回退到桌面值
-const DEFAULT_TAP_MAX_DURATION = 0.20;
-const DEFAULT_TAP_MAX_MOVE_PX = 14;
 const DEFAULT_POINTER_DEAD_ZONE = 0.45;
+const JOY_MAX_RADIUS_PX = 60;             // 搖桿 knob 最遠拖到的像素距離
+const JOY_DEAD_ZONE = 0.15;               // 0..1 magnitude 小於此 → 不移動
 
 export class Input {
   constructor(domElement, camera, profile = {}) {
@@ -26,11 +25,12 @@ export class Input {
     this._pending = new Set();
     this._dashPending = false;
 
-    // pointer 世界座標（射線打到 y=0 平面）
+    // pointer 世界座標（桌面 mouse-follow 用）
     this.pointerWorldX = 0;
     this.pointerWorldZ = 0;
-    this.pointerActive = false;        // mouse 在 canvas 內 / 手指仍按住
+    this.pointerActive = false;        // mouse 在 canvas 內
 
+    this._mode = profile.mode || 'mouse';   // 'mouse' | 'touch'
     this._domElement = domElement;
     this._camera = camera;
     this._ndc = new THREE.Vector2();
@@ -38,24 +38,24 @@ export class Input {
     this._groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
     this._hit = new THREE.Vector3();
 
-    // 2026-05-23 從 device profile 注入閾值；mobile 觸點 Y 偏移避免手指遮住英雄
     this._deadZone = profile.deadZone ?? DEFAULT_POINTER_DEAD_ZONE;
-    this._tapMaxDuration = profile.tapMaxDuration ?? DEFAULT_TAP_MAX_DURATION;
-    this._tapMaxMovePx = profile.tapMaxMovePx ?? DEFAULT_TAP_MAX_MOVE_PX;
-    this._touchYOffsetPx = profile.touchYOffsetPx ?? 0;
 
-    // 觸控 tap 偵測
-    this._touchStartTime = 0;
-    this._touchStartX = 0;
-    this._touchStartY = 0;
-    this._touchMoved = false;
+    // === 手機虛擬搖桿狀態 ===
+    this._joyTouchId = -1;        // 持有搖桿的 touch identifier；-1 = 無
+    this._joyBaseX = 0;            // 搖桿基準點（client px）
+    this._joyBaseY = 0;
+    this._joyDx = 0;               // 搖桿方向（0..1 magnitude 帶方向）
+    this._joyDz = 0;
+
+    this._joyBaseEl = typeof document !== 'undefined' ? document.getElementById('joystick-base') : null;
+    this._joyKnobEl = typeof document !== 'undefined' ? document.getElementById('joystick-knob') : null;
 
     this._installKeyboard();
     this._installPointer();
     this._installTouch();
   }
 
-  // === 內部：把 client 座標轉為地面 (y=0) 世界座標 ===
+  // === 內部：把 client 座標轉為地面 (y=0) 世界座標（桌面 mouse-follow 用） ===
   _updatePointerFromClient(clientX, clientY) {
     const rect = this._domElement.getBoundingClientRect();
     if (rect.width <= 0 || rect.height <= 0) return false;
@@ -88,8 +88,9 @@ export class Input {
       this.keys.clear();
       this._pending.clear();
       this.pointerActive = false;
+      this._resetJoystick();
     });
-    // 擋掉右鍵選單偷 focus（舊註解：避免 keyup 漏接）
+    // 擋掉右鍵選單偷 focus
     window.addEventListener('contextmenu', (e) => { e.preventDefault(); });
   }
 
@@ -105,56 +106,109 @@ export class Input {
       this.pointerActive = false;
     });
     el.addEventListener('mousedown', (e) => {
-      if (e.button !== 0) return;   // 只接左鍵
+      if (e.button !== 0) return;
       this._updatePointerFromClient(e.clientX, e.clientY);
       this._dashPending = true;
       e.preventDefault();
     });
   }
 
+  // === 觸控：左半搖桿、右半 dash ===
   _installTouch() {
     const el = this._domElement;
-    // 觸點 Y 偏移：手指實際座標 → 真正用來 raycast 的 screen 座標往上推 offset px
-    // → 英雄目標位置會在「手指上方」 → 玩家看得到自己
-    const yOffset = this._touchYOffsetPx;
+
+    const isLeftHalf = (clientX) => clientX < window.innerWidth / 2;
 
     el.addEventListener('touchstart', (e) => {
-      if (e.touches.length === 0) return;
-      const t = e.touches[0];
-      this._touchStartTime = performance.now() / 1000;
-      this._touchStartX = t.clientX;
-      this._touchStartY = t.clientY;
-      this._touchMoved = false;
-      this._updatePointerFromClient(t.clientX, t.clientY - yOffset);
+      for (let i = 0; i < e.changedTouches.length; i++) {
+        const t = e.changedTouches[i];
+        if (isLeftHalf(t.clientX)) {
+          // 左半 → 搖桿（已有搖桿時忽略額外的左半觸點）
+          if (this._joyTouchId === -1) {
+            this._joyTouchId = t.identifier;
+            this._joyBaseX = t.clientX;
+            this._joyBaseY = t.clientY;
+            this._joyDx = 0;
+            this._joyDz = 0;
+            this._showJoystick();
+            this._updateJoystickVisual();
+          }
+        } else {
+          // 右半 → dash（立即觸發；多指則只 fire 一次）
+          this._dashPending = true;
+        }
+      }
       e.preventDefault();
     }, { passive: false });
 
     el.addEventListener('touchmove', (e) => {
-      if (e.touches.length === 0) return;
-      const t = e.touches[0];
-      if (!this._touchMoved) {
-        const dx = t.clientX - this._touchStartX;
-        const dy = t.clientY - this._touchStartY;
-        if (Math.hypot(dx, dy) > this._tapMaxMovePx) this._touchMoved = true;
+      for (let i = 0; i < e.changedTouches.length; i++) {
+        const t = e.changedTouches[i];
+        if (t.identifier === this._joyTouchId) {
+          this._updateJoystickFromTouch(t.clientX, t.clientY);
+        }
       }
-      this._updatePointerFromClient(t.clientX, t.clientY - yOffset);
       e.preventDefault();
     }, { passive: false });
 
     el.addEventListener('touchend', (e) => {
-      const now = performance.now() / 1000;
-      const dur = now - this._touchStartTime;
-      // 短時間 + 未顯著移動 → tap → dash 觸發
-      if (dur <= this._tapMaxDuration && !this._touchMoved) {
-        this._dashPending = true;
+      for (let i = 0; i < e.changedTouches.length; i++) {
+        const t = e.changedTouches[i];
+        if (t.identifier === this._joyTouchId) this._resetJoystick();
       }
-      this.pointerActive = false;
       e.preventDefault();
     }, { passive: false });
 
-    el.addEventListener('touchcancel', () => {
-      this.pointerActive = false;
+    el.addEventListener('touchcancel', (e) => {
+      for (let i = 0; i < e.changedTouches.length; i++) {
+        const t = e.changedTouches[i];
+        if (t.identifier === this._joyTouchId) this._resetJoystick();
+      }
     });
+  }
+
+  _updateJoystickFromTouch(clientX, clientY) {
+    const dx = clientX - this._joyBaseX;
+    const dy = clientY - this._joyBaseY;
+    const len = Math.hypot(dx, dy);
+    const r = JOY_MAX_RADIUS_PX;
+    // magnitude 0..1（超過半徑後 clip 為 1）
+    const mag = Math.min(len, r) / r;
+    if (len < 0.001 || mag < JOY_DEAD_ZONE) {
+      this._joyDx = 0; this._joyDz = 0;
+    } else {
+      // 螢幕座標 → 世界座標：screen +x = world +x；screen +y(下) = world +z(後)
+      // top-down camera 看著 -Z 為「前方」，所以這對應正確
+      const nx = dx / len, ny = dy / len;
+      this._joyDx = nx * mag;
+      this._joyDz = ny * mag;
+    }
+    this._updateJoystickVisual();
+  }
+
+  _resetJoystick() {
+    this._joyTouchId = -1;
+    this._joyDx = 0;
+    this._joyDz = 0;
+    this._hideJoystick();
+  }
+
+  _showJoystick() {
+    if (this._joyBaseEl) this._joyBaseEl.classList.add('active');
+    if (this._joyKnobEl) this._joyKnobEl.classList.add('active');
+  }
+
+  _hideJoystick() {
+    if (this._joyBaseEl) this._joyBaseEl.classList.remove('active');
+    if (this._joyKnobEl) this._joyKnobEl.classList.remove('active');
+  }
+
+  _updateJoystickVisual() {
+    if (!this._joyBaseEl || !this._joyKnobEl) return;
+    this._joyBaseEl.style.transform = `translate(${this._joyBaseX}px, ${this._joyBaseY}px) translate(-50%, -50%)`;
+    const knobX = this._joyBaseX + this._joyDx * JOY_MAX_RADIUS_PX;
+    const knobY = this._joyBaseY + this._joyDz * JOY_MAX_RADIUS_PX;
+    this._joyKnobEl.style.transform = `translate(${knobX}px, ${knobY}px) translate(-50%, -50%)`;
   }
 
   beginFrame() {
@@ -166,11 +220,16 @@ export class Input {
   wasPressed(code) { return this.justPressed.has(code); }
 
   /**
-   * 取得這幀的移動方向（單位向量）。pointer 距 hero 太近 → 回 (0,0) 表示「不要動」。
-   * @param heroX, heroZ 目前英雄世界座標
-   * @param out THREE.Vector3 或 {x,z} 物件 — 會被填寫
+   * 取得這幀的移動方向。
+   * - mobile (mode='touch')：回搖桿向量（含 0..1 magnitude）
+   * - desktop (mode='mouse')：回 pointer 朝 hero 的單位向量；pointer 在死區內 → (0,0)
    */
   getMoveDir(heroX, heroZ, out) {
+    if (this._mode === 'touch') {
+      out.x = this._joyDx;
+      out.z = this._joyDz;
+      return out;
+    }
     if (!this.pointerActive) {
       out.x = 0; out.z = 0; return out;
     }
@@ -185,7 +244,7 @@ export class Input {
     return out;
   }
 
-  /** 取出並清掉這幀的 dash 請求（左鍵 click 或 tap）。回傳 boolean。 */
+  /** 取出並清掉這幀的 dash 請求（左鍵 click 或右半 tap）。回傳 boolean。 */
   consumeDash() {
     if (this._dashPending) { this._dashPending = false; return true; }
     return false;

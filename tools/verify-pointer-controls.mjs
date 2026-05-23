@@ -99,10 +99,10 @@ try {
   // 等 dash CD 過
   await new Promise(r => setTimeout(r, 1500));
 
-  // 4) 模擬觸控 tap
+  // 4) 模擬觸控 tap — 必須在右半才會觸發 dash（左半改為虛擬搖桿）
   const client = await page.target().createCDPSession();
-  const tapX = Math.floor(canvasBox.x + canvasBox.w * 0.4);
-  const tapY = Math.floor(canvasBox.y + canvasBox.h * 0.7);
+  const tapX = Math.floor(canvasBox.x + canvasBox.w * 0.75);
+  const tapY = Math.floor(canvasBox.y + canvasBox.h * 0.5);
   // 用 Input.dispatchTouchEvent (CDP) 模擬 mobile
   await client.send('Input.dispatchTouchEvent', {
     type: 'touchStart',
@@ -119,7 +119,7 @@ try {
     cooldown: window.__game.hero.dashCooldown,
   }));
   const tapDashed = afterTap.dashTimer > 0 || afterTap.cooldown > 1.0;
-  report('短 tap 觸發 dash', tapDashed, `dashTimer=${afterTap.dashTimer.toFixed(3)} cd=${afterTap.cooldown.toFixed(2)}`);
+  report('右半 tap 觸發 dash', tapDashed, `dashTimer=${afterTap.dashTimer.toFixed(3)} cd=${afterTap.cooldown.toFixed(2)}`);
 
   // === Summary ===
   console.log('\n=== Summary ===');
