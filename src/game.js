@@ -26,6 +26,7 @@ import { PerkUI } from './perkUI.js';
 import { Meta, META_NODES, getSlotSummary, SLOT_COUNT } from './meta.js';
 import { Tutorial } from './tutorial.js';
 import { BotInput, botThink, installBotHooks, wrapTickForBot } from './bot.js';
+import { DEVICE_PROFILE } from './device.js';
 
 export class Game {
   constructor(renderer, loadSlotN = null, options = {}) {
@@ -66,7 +67,16 @@ export class Game {
       effects: [],      // 視覺效果列表 {type:'lock'|'bolt', x, z, life, lifeMax}
     };
 
-    const realInput = new Input();
+    // 2026-05-23 pointer-follow：Input 需要 canvas 與 camera 才能把 client 座標 raycast 成世界座標
+    // 第三個參數是裝置 profile（觸點 Y 偏移、自訂 tap / 死區閾值）
+    const realInput = new Input(this.renderer.domElement, this.camera, DEVICE_PROFILE.input);
+    // 依裝置覆寫 HUD 上的操控說明（mobile 不顯示鍵盤縮寫）
+    const helpEl = document.getElementById('help');
+    if (helpEl) {
+      const debugBlock = helpEl.querySelector('.debug-only');
+      const debugHtml = debugBlock ? debugBlock.outerHTML : '';
+      helpEl.innerHTML = `${DEVICE_PROFILE.hud.helpHtml}<br>${debugHtml}<kbd>P</kbd> 暫停　<kbd>M</kbd> 靜音　<kbd>R</kbd> 重開`;
+    }
     if (this._botCfg) {
       this._botInput = new BotInput(realInput);
       this.input = this._botInput;
@@ -306,7 +316,12 @@ export class Game {
     // Bot 模式：先讓 AI 決定本幀的移動 / dash 訊號
     if (this._botInput) botThink(this, rawDtSec);
 
-    if (!this.audioStarted && this.input.justPressed.size > 0) {
+    // 2026-05-23：新操控下手機玩家不會按鍵 → 也需要靠 pointerActive / dash 請求觸發音訊解鎖
+    if (!this.audioStarted && (
+      this.input.justPressed.size > 0 ||
+      this.input.pointerActive ||
+      this.input._dashPending     // 內部欄位：左鍵 / tap 已暫存待 hero 消費
+    )) {
       this.audio.ensureInit();
       this.audio.resume();
       this.audioStarted = true;
@@ -1359,15 +1374,13 @@ export class Game {
       if (bossPools.has(sw)) continue;
       for (let i = 0; i < sw.maxCount; i++) {
         if (!sw.alive[i]) continue;
-        candidates.push({ pool: sw, idx: i, x: sw.pos[i*3+0], z: sw.pos[i*3+2] });
+        candidates.push({ pool: sw, idx: i, x: sw.pos[i*3+0], z: sw.pos[i*3+2], hp: sw.hp[i] });
       }
     }
-    // Fisher-Yates partial shuffle
+    // 2026-05-23 PERKS.md：改為依當前 HP 由高到低排序，鎖定血量最高的 6 個
+    // （原本是隨機 Fisher-Yates；玩家反饋「應該優先打高血怪」更符合期望）
+    candidates.sort((a, b) => b.hp - a.hp);
     const n = Math.min(CONFIG.hexStrikeTargetCount, candidates.length);
-    for (let i = 0; i < n; i++) {
-      const j = i + Math.floor(Math.random() * (candidates.length - i));
-      [candidates[i], candidates[j]] = [candidates[j], candidates[i]];
-    }
     return candidates.slice(0, n);
   }
 

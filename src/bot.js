@@ -64,6 +64,10 @@ export class BotInput {
     this._dashPressed = false;
     this.keys = realInput.keys;     // 沿用真實 key set 給 audioStarted 偵測
     this.justPressed = realInput.justPressed;
+    // 2026-05-23 pointer-follow API 對齊：bot 沒有 pointer，但 Hero.dash fallback 會讀
+    this.pointerActive = false;
+    this.pointerWorldX = 0;
+    this.pointerWorldZ = 0;
   }
 
   beginFrame() {
@@ -72,19 +76,19 @@ export class BotInput {
   }
 
   isDown(code) { return this.real.isDown(code); }
+  wasPressed(code) { return this.real.wasPressed(code); }
 
-  wasPressed(code) {
-    if (code === 'Space' && this._dashPressed) {
-      this._dashPressed = false;
-      return true;
-    }
-    return this.real.wasPressed(code);
-  }
-
-  getMoveVec(out) {
+  /** 2026-05-23 新 API：Hero 改用 getMoveDir 取代 getMoveVec */
+  getMoveDir(heroX, heroZ, out) {
     out.x = this._moveX;
     out.z = this._moveZ;
     return out;
+  }
+
+  /** 2026-05-23 新 API：Hero 用 consumeDash 取代 wasPressed('Space') */
+  consumeDash() {
+    if (this._dashPressed) { this._dashPressed = false; return true; }
+    return false;
   }
 
   setMove(x, z) {

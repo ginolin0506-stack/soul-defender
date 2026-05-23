@@ -12,7 +12,7 @@ export const PERKS = {
     id: 'hex_strike_overload',
     name: 'Synaptic Overload: Hex Strike',
     nameCn: '瞬獄雷鳴·六芒鎖定',
-    desc: '啟動時時間凍結。準心依序鎖定畫面中隨機 6 個目標的頭部並閃爍，隨後 6 道赤紅落雷依序轟擊被鎖定的敵人。落雷結束後時間恢復運作。',
+    desc: '啟動時時間凍結。準心依序鎖定畫面中血量最高的 6 個目標並閃爍，隨後 6 道赤紅落雷依序轟擊被鎖定的敵人。落雷結束後時間恢復運作。',
     rarity: 'legendary',
     icon: '⚡',
     weight: 0.35,
@@ -25,7 +25,7 @@ export const PERKS = {
     id: 'soul_debt',
     name: 'Soul Debt',
     nameCn: '靈魂透支',
-    desc: '擊殺敵人後，靈魂會在玩家身邊環繞（上限 6 顆）。環繞期間碰到敵人造成傷害，3 秒後回到水晶。',
+    desc: '擊殺敵人或觸發特定條件時，靈魂飛向玩家並轉化為「星體護盾」環繞自身（上限 6 顆）；環繞期間碰撞敵人造成基礎傷害，3 秒後靈魂回到水晶、效果消失。',
     rarity: 'legendary',
     icon: '🌠',
     weight: 0.45,
@@ -35,12 +35,12 @@ export const PERKS = {
     id: 'critical_suspension',
     name: 'Critical Suspension',
     nameCn: '臨界滯留',
-    desc: 'Slinger 子彈與 Splitter 炸彈的飛行速度減慢 50%（容易閃避）。',
-    // 2026-05-23 重新分級：原本是 legendary 但只影響兩種飛行物，
-    // 跟 Hex Strike / Soul Debt（傳奇等級的全場威脅）相比落差太大 → 改 rare
-    rarity: 'rare',
+    desc: '所有飛行物的速度減慢',
+    // 2026-05-23 PERKS.md：回到 legendary 等級
+    // 雖然只影響 Slinger 子彈與 Splitter 炸彈，但這是目前唯一兩種敵方投射物 → 等同「所有飛行物」
+    rarity: 'legendary',
     icon: '⏱️',
-    weight: 0.7,
+    weight: 0.45,
     apply(g) { g.perks.criticalSuspension = true; }
   },
 
@@ -49,19 +49,19 @@ export const PERKS = {
     id: 'aegis_charge',
     name: 'Aegis Charge',
     nameCn: '靈光護甲',
-    desc: '每 8 個靈魂回流，水晶獲得護盾（每層 +20 盾，最多 4 層）',
+    desc: '每 10 個靈魂回流，水晶獲得護盾（每層 +20 盾，最多 3 層）',
     rarity: 'rare',
     icon: '🛡️',
     weight: 0.75,
     stackable: true,
-    maxStacks: 4,
+    maxStacks: 3,
     apply(g) { g.perks.aegisStacks += 1; }
   },
   pierce: {
     id: 'pierce',
     name: 'Pierce',
     nameCn: '穿刺',
-    desc: '每 2 秒朝最近敵人射出一道劍氣，沿路徑造成傷害',
+    desc: '每兩秒射出一道劍氣，朝最近的敵人發射，路徑上造成傷害',
     rarity: 'rare',
     icon: '⚔️',
     weight: 0.7,
@@ -146,7 +146,7 @@ export const PERKS = {
     id: 'crystallize',
     name: 'Crystallize',
     nameCn: '水晶共鳴',
-    desc: '水晶最大 HP +250，並立即回復 +250 HP（最多 3 層）',
+    desc: '水晶最大 HP +250，水晶血量回 250（最多 3 層）',
     rarity: 'common',
     icon: '💎',
     weight: 1.1,
@@ -198,7 +198,7 @@ const FIRST_RUN_BOOST_IDS = new Set([
   'bloom',                // 脈衝範圍，強化清屏
   'swift_step',           // 移速 + dash CD，容錯
   'crit_frenzy',          // 暴擊率，純數值線性 buff
-  'critical_suspension',  // 2026-05-23 改 rare 後加入：投射物半速 = 新手最有感的安全 perk
+  // 2026-05-23 PERKS.md：critical_suspension 改回 legendary，移出首抽加權清單
 ]);
 
 /**

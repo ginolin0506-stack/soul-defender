@@ -402,7 +402,8 @@ export const CONFIG = {
   // 靈光護甲 Aegis Charge
   // 2026-05-22 大砍：6 souls → 10 souls / +35 → +20 / 5 層 → 3 層（避免後期無腦堆疊）
   // 2026-05-23 微調：首抽價值崩潰（vs Crystallize 立刻 +250 HP），10→8、3→4 略補一刀
-  aegisSoulsPerShield: 8,
+  // 2026-05-23 PERKS.md：回到 10 souls / 3 層（玩家覺得 4 層太強）
+  aegisSoulsPerShield: 10,
   aegisShieldPerStack: 20,
 
   // === 2026-05-22 機制重寫 ===

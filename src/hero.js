@@ -388,7 +388,8 @@ export class Hero {
   }
 
   update(dt, input) {
-    input.getMoveVec(this._tmpMove);
+    // 2026-05-23 控制改為 pointer-follow：輸入回傳「pointer 相對 hero 的單位方向」
+    input.getMoveDir(this.position.x, this.position.z, this._tmpMove);
     // 沼澤減速：dash 期間免疫（位移工具應該突破地形）
     const slowMult = (this.dashTimer > 0) ? 1 : (1 - this.mireSlowFactor);
     const speed = CONFIG.heroSpeed * (this.perks?.heroSpeedMult || 1) * slowMult;
@@ -560,8 +561,18 @@ export class Hero {
     }
 
     this.dashCooldown -= dt;
-    if (input.wasPressed('Space') && this.dashCooldown <= 0 && this.dashTimer <= 0) {
+    if (input.consumeDash() && this.dashCooldown <= 0 && this.dashTimer <= 0) {
+      // 方向優先序：
+      // 1) 移動方向（pointer 在死區外 → 與走路同向）
+      // 2) pointer 雖在死區但仍有效 → 朝 pointer（即使距離極短也保留方向）
+      // 3) 沒 pointer → 沿當前 facing
       let dx = this._tmpMove.x, dz = this._tmpMove.z;
+      if (dx === 0 && dz === 0 && input.pointerActive) {
+        const pdx = input.pointerWorldX - this.position.x;
+        const pdz = input.pointerWorldZ - this.position.z;
+        const plen = Math.hypot(pdx, pdz);
+        if (plen > 0.001) { dx = pdx / plen; dz = pdz / plen; }
+      }
       if (dx === 0 && dz === 0) {
         dx = Math.sin(this.facing + Math.PI);
         dz = Math.cos(this.facing + Math.PI);

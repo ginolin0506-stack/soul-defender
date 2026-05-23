@@ -3,6 +3,7 @@ import { Game } from './game.js';
 import { hasAnySlot, getSlotSummary, SLOT_COUNT } from './meta.js';
 import { parseBotCfg } from './bot.js';
 import { showIntro } from './intro.js';
+import { DEVICE_PROFILE } from './device.js';
 
 // === Bot 模式：?bot=1 自動跑 + 自動 AI；?headless=1 把 RAF 換成最快的 setTimeout ===
 const botCfg = parseBotCfg(location.search);
@@ -40,18 +41,21 @@ if (botCfg) {
 }
 
 const canvas = document.getElementById('game');
+// 2026-05-23 兩套 profile：桌面 / 手機在開啟時就決定 renderer 設定
 const renderer = new THREE.WebGLRenderer({
   canvas,
-  antialias: true,
+  antialias: DEVICE_PROFILE.renderer.antialias,
   powerPreference: 'high-performance',
 });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setPixelRatio(DEVICE_PROFILE.renderer.pixelRatio);
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.05;
-renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMappingExposure = DEVICE_PROFILE.renderer.toneMappingExposure;
+renderer.shadowMap.enabled = DEVICE_PROFILE.renderer.shadowsEnabled;
+if (DEVICE_PROFILE.renderer.shadowsEnabled) {
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+}
 
 function startGame(loadSlotN = null) {
   const game = new Game(renderer, loadSlotN, { bot: botCfg });

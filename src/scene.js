@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { CONFIG } from './config.js';
+import { DEVICE_PROFILE } from './device.js';
 
 export function buildScene() {
   const scene = new THREE.Scene();
@@ -22,7 +23,8 @@ export function buildScene() {
 
   const sun = new THREE.DirectionalLight(0xccddff, 0.9);
   sun.position.set(-12, 22, 10);
-  sun.castShadow = true;
+  // 2026-05-23 手機關陰影（2048×2048 shadow map 是 GPU 殺手；profile.renderer.shadowsEnabled 控制）
+  sun.castShadow = DEVICE_PROFILE.renderer.shadowsEnabled;
   sun.shadow.mapSize.set(2048, 2048);
   sun.shadow.camera.left = -25;
   sun.shadow.camera.right = 25;
