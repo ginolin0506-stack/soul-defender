@@ -74,8 +74,8 @@ const DESKTOP_PROFILE = {
     deadZone: 0.45,
   },
   hud: {
-    helpHtml: '🖱️ 鼠標位置 = 自動移動　🖱️ 左鍵 = 衝刺<br><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> 升級選天賦',
-    tutorialStart: '鼠標位置 → 英雄自動移動；左鍵 → 衝刺。撞到怪會扣自己血量（繫帶連著時慢回血）；水晶或英雄任一血量歸零都算結束。',
+    helpHtml: '<kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> 移動　🖱️ 左鍵 = 朝鼠標方向 Dash<br><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> 升級選天賦',
+    tutorialStart: 'WASD 移動，左鍵朝鼠標方向衝刺。撞到怪會扣自己血量（繫帶連著時慢回血）；水晶或英雄任一血量歸零都算結束。',
   },
 };
 

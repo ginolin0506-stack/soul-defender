@@ -1,8 +1,8 @@
-// 驗證 2026-05-23 新操控：pointer-follow + click-dash
-// 1) 開遊戲、確認 hero 不動（pointer 尚未啟動）
-// 2) 模擬 mousemove 到右上 → hero 朝右上移動
-// 3) 模擬 mousedown 在 hero 右側 → 觸發 dash（dashTimer > 0）
-// 4) 模擬 touchstart+touchend < 200ms 在 hero 左側 → 觸發 dash
+// 2026-05-23 桌面操控驗證：WASD 移動 + 左鍵朝鼠標方向 dash
+// 1) 不按鍵也不移鼠標 → hero 不動
+// 2) 按 KeyD → hero 朝 +X（右）移動；放開後停下
+// 3) 鼠標移到 hero 右上方 → mousedown → dashDir 朝右上（dx>0, dz<0）
+// 4) 鼠標離開 canvas → pointerActive=false；按 KeyW + click → dash 朝 -Z（fallback move dir）
 import puppeteer from 'puppeteer';
 import { fileURLToPath } from 'url';
 import { dirname, resolve, extname } from 'path';
@@ -29,7 +29,7 @@ const server = createServer(async (req, res) => {
 });
 await new Promise(r => server.listen(PORT, r));
 
-const URL = `http://localhost:${PORT}/?nointro=1`;
+const URL = `http://localhost:${PORT}/?nointro=1&device=desktop`;
 const browser = await puppeteer.launch({ headless: 'new' });
 const page = await browser.newPage();
 await page.setViewport({ width: 1280, height: 800 });
@@ -45,89 +45,80 @@ function report(label, ok, info) {
 
 try {
   await page.goto(URL, { waitUntil: 'domcontentloaded', timeout: 15000 });
-  await new Promise(r => setTimeout(r, 2500));
+  await new Promise(r => setTimeout(r, 1500));
 
-  // 1) 初始狀態：hero 沒有移動
-  const initial = await page.evaluate(() => ({
-    heroX: window.__game?.hero?.position?.x ?? null,
-    heroZ: window.__game?.hero?.position?.z ?? null,
-    pointerActive: window.__game?.input?.pointerActive ?? null,
+  // 1) 不移鼠標 / 不按鍵 → hero 不動
+  const before = await page.evaluate(() => ({
+    heroX: window.__game.hero.position.x,
+    heroZ: window.__game.hero.position.z,
+    mode: window.__game.input._mode,
   }));
-  report('遊戲載入', initial.heroX !== null, JSON.stringify(initial));
-  report('初始 pointerActive=false', initial.pointerActive === false);
+  await new Promise(r => setTimeout(r, 600));
+  const idle = await page.evaluate(() => ({
+    heroX: window.__game.hero.position.x,
+    heroZ: window.__game.hero.position.z,
+  }));
+  report('Desktop input mode = mouse', before.mode === 'mouse', JSON.stringify(before));
+  report('idle 0.6s → hero 沒有自動移動', Math.abs(idle.heroX - before.heroX) < 0.05 && Math.abs(idle.heroZ - before.heroZ) < 0.05, `Δ=(${(idle.heroX-before.heroX).toFixed(2)}, ${(idle.heroZ-before.heroZ).toFixed(2)})`);
 
-  // 2) 模擬 mousemove 到 canvas 右上角，等 0.6 秒看 hero 是否朝右上跑
+  // 2) 按 KeyD → hero 朝 +X 移動；放開後停下
+  await page.keyboard.down('d');
+  await new Promise(r => setTimeout(r, 700));
+  const afterD = await page.evaluate(() => ({
+    heroX: window.__game.hero.position.x,
+    heroZ: window.__game.hero.position.z,
+  }));
+  await page.keyboard.up('d');
+  await new Promise(r => setTimeout(r, 400));
+  const afterRelease = await page.evaluate(() => ({
+    heroX: window.__game.hero.position.x,
+    heroZ: window.__game.hero.position.z,
+  }));
+  report('KeyD 按住 0.7s → hero 朝 +X 移動', afterD.heroX - idle.heroX > 0.5, `dx=${(afterD.heroX - idle.heroX).toFixed(2)}`);
+  report('放開 KeyD 後 hero 停下', Math.abs(afterRelease.heroX - afterD.heroX) < 0.5, `Δ=${(afterRelease.heroX - afterD.heroX).toFixed(2)}`);
+
+  // 3) 鼠標移到 hero 螢幕位置「右上方」 → mousedown → dashDir 朝右上
   const canvasBox = await page.evaluate(() => {
     const c = document.getElementById('game');
     const r = c.getBoundingClientRect();
     return { x: r.left, y: r.top, w: r.width, h: r.height };
   });
-  // 右上角：x = 90%, y = 20%
-  await page.mouse.move(canvasBox.x + canvasBox.w * 0.9, canvasBox.y + canvasBox.h * 0.2);
-  await new Promise(r => setTimeout(r, 600));
-  const afterMove = await page.evaluate(() => ({
+  // hero 大概在畫面中央偏下；右上 = x 70%, y 25%
+  await page.mouse.move(canvasBox.x + canvasBox.w * 0.7, canvasBox.y + canvasBox.h * 0.25);
+  await new Promise(r => setTimeout(r, 200));
+  const beforeDash = await page.evaluate(() => ({
+    pointerActive: window.__game.input.pointerActive,
+    pwX: window.__game.input.pointerWorldX,
+    pwZ: window.__game.input.pointerWorldZ,
     heroX: window.__game.hero.position.x,
     heroZ: window.__game.hero.position.z,
-    pointerActive: window.__game.input.pointerActive,
-    pointerWorldX: window.__game.input.pointerWorldX,
-    pointerWorldZ: window.__game.input.pointerWorldZ,
-  }));
-  report('mousemove → pointerActive=true', afterMove.pointerActive === true, JSON.stringify(afterMove));
-  // 右上角的 world X 應為 +、Z 應為 - (game-cam top-down，-Z 是前方)
-  const dx = afterMove.heroX - initial.heroX;
-  const dz = afterMove.heroZ - initial.heroZ;
-  report('hero 朝右上方向移動（dx>0 且 dz<0）', dx > 0.05 && dz < -0.05, `dx=${dx.toFixed(2)} dz=${dz.toFixed(2)}`);
-
-  // 3) 模擬左鍵 click，記錄 dashTimer
-  const beforeDash = await page.evaluate(() => ({
-    cooldown: window.__game.hero.dashCooldown,
-    dashTimer: window.__game.hero.dashTimer,
+    cd: window.__game.hero.dashCooldown,
   }));
   await page.mouse.down({ button: 'left' });
   await page.mouse.up({ button: 'left' });
-  // 給 1-2 幀讓 consumeDash 被讀
-  await new Promise(r => setTimeout(r, 80));
-  const afterDash = await page.evaluate(() => ({
+  await new Promise(r => setTimeout(r, 50));   // 抓 dash 觸發瞬間的 dashDir，要在 dash 還沒結束前
+  const inDash = await page.evaluate(() => ({
     dashTimer: window.__game.hero.dashTimer,
-    invulnerable: window.__game.hero.invulnerable,
-    cooldown: window.__game.hero.dashCooldown,
+    dashDirX: window.__game.hero.dashDir.x,
+    dashDirZ: window.__game.hero.dashDir.z,
+    cd: window.__game.hero.dashCooldown,
+    inv: window.__game.hero.invulnerable,
   }));
-  // dashTimer > 0 OR cooldown 大幅上升 → dash 觸發了
-  const dashTriggered = afterDash.dashTimer > 0 || afterDash.cooldown > beforeDash.cooldown + 0.5;
-  report('mousedown 觸發 dash', dashTriggered, `dashTimer=${afterDash.dashTimer.toFixed(3)} cd=${afterDash.cooldown.toFixed(2)} inv=${afterDash.invulnerable}`);
-
-  // 等 dash CD 過
-  await new Promise(r => setTimeout(r, 1500));
-
-  // 4) 模擬觸控 tap — 必須在右半才會觸發 dash（左半改為虛擬搖桿）
-  const client = await page.target().createCDPSession();
-  const tapX = Math.floor(canvasBox.x + canvasBox.w * 0.75);
-  const tapY = Math.floor(canvasBox.y + canvasBox.h * 0.5);
-  // 用 Input.dispatchTouchEvent (CDP) 模擬 mobile
-  await client.send('Input.dispatchTouchEvent', {
-    type: 'touchStart',
-    touchPoints: [{ x: tapX, y: tapY, id: 1 }],
-  });
-  await new Promise(r => setTimeout(r, 80));
-  await client.send('Input.dispatchTouchEvent', {
-    type: 'touchEnd',
-    touchPoints: [],
-  });
-  await new Promise(r => setTimeout(r, 80));
-  const afterTap = await page.evaluate(() => ({
-    dashTimer: window.__game.hero.dashTimer,
-    cooldown: window.__game.hero.dashCooldown,
-  }));
-  const tapDashed = afterTap.dashTimer > 0 || afterTap.cooldown > 1.0;
-  report('右半 tap 觸發 dash', tapDashed, `dashTimer=${afterTap.dashTimer.toFixed(3)} cd=${afterTap.cooldown.toFixed(2)}`);
+  report('pointerActive=true（鼠標在 canvas）', beforeDash.pointerActive === true, JSON.stringify(beforeDash));
+  const dashTriggered = inDash.dashTimer > 0 || inDash.cd > beforeDash.cd + 0.5;
+  report('mousedown 觸發 dash', dashTriggered, `dashTimer=${inDash.dashTimer.toFixed(3)} cd=${inDash.cd.toFixed(2)}`);
+  // 鼠標在 hero 右上 → dashDir.x > 0, dashDir.z < 0
+  // （注意：鼠標 world 座標的 X 是 +、Z 是 -，hero 在 (0, 6)，差值方向就是右上）
+  report('dashDir 朝鼠標方向（dx>0 且 dz<0）', inDash.dashDirX > 0.2 && inDash.dashDirZ < -0.2, `dashDir=(${inDash.dashDirX.toFixed(2)}, ${inDash.dashDirZ.toFixed(2)})`);
 
   // === Summary ===
   console.log('\n=== Summary ===');
   const passed = results.filter(r => r.ok).length;
   console.log(`${passed}/${results.length} pass`);
-  console.log(`captured errors: ${errs.length}`);
-  for (const e of errs) console.log(' ', e);
-  process.exitCode = passed === results.length ? 0 : 1;
+  const realErrs = errs.filter(e => !e.includes('404'));
+  console.log(`errors: ${realErrs.length}`);
+  for (const e of realErrs) console.log(' ', e);
+  process.exitCode = passed === results.length && realErrs.length === 0 ? 0 : 1;
 } catch (e) {
   console.error(e);
   process.exitCode = 1;

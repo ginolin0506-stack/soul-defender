@@ -1,8 +1,11 @@
-// 2026-05-23 重構 v2：桌面用 mouse-follow + click dash；手機用「左半虛擬搖桿 + 右半 tap dash」
-// WASD / Arrow / Space 移動已全部捨棄；只保留系統/UI 鍵：P / R / M / 1-3 / debug B V C J K L U N
+// 2026-05-23 重構 v3：
+//   桌面 → WASD/Arrows 移動 + 左鍵朝鼠標方向 dash
+//   手機 → 左半虛擬搖桿 + 右半 tap dash
 import * as THREE from 'three';
 
 const GAME_KEYS = new Set([
+  'KeyW', 'KeyA', 'KeyS', 'KeyD',                               // 桌面移動
+  'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight',
   'KeyP',                                                       // 暫停
   'KeyR', 'KeyM',                                               // 重啟、靜音
   'KeyB', 'KeyV', 'KeyC', 'KeyG', 'KeyH', 'KeyJ',
@@ -222,7 +225,8 @@ export class Input {
   /**
    * 取得這幀的移動方向。
    * - mobile (mode='touch')：回搖桿向量（含 0..1 magnitude）
-   * - desktop (mode='mouse')：回 pointer 朝 hero 的單位向量；pointer 在死區內 → (0,0)
+   * - desktop (mode='mouse')：讀 WASD / Arrow 鍵，回標準化 8 方向（單位向量）
+   * heroX / heroZ 桌面模式現在用不到（保留 API 一致）
    */
   getMoveDir(heroX, heroZ, out) {
     if (this._mode === 'touch') {
@@ -230,17 +234,15 @@ export class Input {
       out.z = this._joyDz;
       return out;
     }
-    if (!this.pointerActive) {
-      out.x = 0; out.z = 0; return out;
-    }
-    const dx = this.pointerWorldX - heroX;
-    const dz = this.pointerWorldZ - heroZ;
-    const len = Math.hypot(dx, dz);
-    if (len < this._deadZone) {
-      out.x = 0; out.z = 0;
-    } else {
-      out.x = dx / len; out.z = dz / len;
-    }
+    // Mouse mode: WASD + Arrows
+    let mx = 0, mz = 0;
+    if (this.keys.has('KeyW') || this.keys.has('ArrowUp'))    mz -= 1;
+    if (this.keys.has('KeyS') || this.keys.has('ArrowDown'))  mz += 1;
+    if (this.keys.has('KeyA') || this.keys.has('ArrowLeft'))  mx -= 1;
+    if (this.keys.has('KeyD') || this.keys.has('ArrowRight')) mx += 1;
+    const len = Math.hypot(mx, mz);
+    if (len > 0) { mx /= len; mz /= len; }
+    out.x = mx; out.z = mz;
     return out;
   }
 

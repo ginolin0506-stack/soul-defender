@@ -562,16 +562,21 @@ export class Hero {
 
     this.dashCooldown -= dt;
     if (input.consumeDash() && this.dashCooldown <= 0 && this.dashTimer <= 0) {
-      // 方向優先序：
-      // 1) 移動方向（pointer 在死區外 → 與走路同向）
-      // 2) pointer 雖在死區但仍有效 → 朝 pointer（即使距離極短也保留方向）
-      // 3) 沒 pointer → 沿當前 facing
-      let dx = this._tmpMove.x, dz = this._tmpMove.z;
-      if (dx === 0 && dz === 0 && input.pointerActive) {
+      // 2026-05-23 dash 方向優先序：
+      // 1) 鼠標方向（桌面：左鍵 = 朝鼠標方向 dash；mobile pointerActive=false 自然跳過）
+      // 2) 移動方向（WASD / 搖桿）
+      // 3) 當前 facing
+      let dx = 0, dz = 0;
+      if (input.pointerActive) {
         const pdx = input.pointerWorldX - this.position.x;
         const pdz = input.pointerWorldZ - this.position.z;
         const plen = Math.hypot(pdx, pdz);
-        if (plen > 0.001) { dx = pdx / plen; dz = pdz / plen; }
+        // dead zone 0.5u：鼠標壓在英雄身上 → 跳過、由移動方向接手
+        if (plen > 0.5) { dx = pdx / plen; dz = pdz / plen; }
+      }
+      if (dx === 0 && dz === 0) {
+        dx = this._tmpMove.x;
+        dz = this._tmpMove.z;
       }
       if (dx === 0 && dz === 0) {
         dx = Math.sin(this.facing + Math.PI);
